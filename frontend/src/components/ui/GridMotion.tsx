@@ -67,9 +67,17 @@ const GridMotion = ({ items = [], gradientColor = "black" }: GridMotionProps) =>
                   <div key={itemIndex} className="grid-motion-row-item">
                     <div className="grid-motion-row-item-inner">
                       {typeof content === "string" && content.startsWith("http") ? (
-                        <div
+                        <img
+                          src={content}
+                          alt=""
+                          loading="lazy"
+                          draggable={false}
                           className="grid-motion-row-item-img"
-                          style={{ backgroundImage: `url(${content})` }}
+                          onError={(e) => {
+                            // Hide broken image so the branded gradient on
+                            // .grid-motion-row-item-inner shows through.
+                            e.currentTarget.style.visibility = "hidden";
+                          }}
                         />
                       ) : (
                         <div className="grid-motion-row-item-content">{content}</div>

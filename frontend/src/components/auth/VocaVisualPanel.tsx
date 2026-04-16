@@ -4,37 +4,39 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import GridMotion from "@/components/ui/GridMotion";
 import TextType from "@/components/ui/TextType";
+import { VocaMark } from "@/components/brand/VocaLogo";
 
-// Book & reading themed images from Unsplash
+// 28 curated, long-lived Unsplash photo IDs — books, libraries, reading.
+// Any that fail to load fall back to a branded purple gradient tile (see GridMotion onError).
 const BOOK_IMAGES = [
-  "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1519682577862-22b62b24e493?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1491841573634-28140fc7ced7?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1550399105-c4db5fb85c18?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1588580000645-4562a6d2c839?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1463320726281-696a485928c7?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1476275466078-4cdc71f21ebe?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1506880018603-83d5b814b5a6?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1472289065668-ce650ac443d2?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1535905557558-afc4877a26fc?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1434030216411-0b793f4b6375?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1491841573634-28140fc7ced7?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1509021436665-8f07dbf5bf1d?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1471970471555-19d4b113e9ed?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1550399105-c4db5fb85c18?w=400&h=260&fit=crop&q=80",
-  "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400&h=260&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1519682577862-22b62b24e493?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1518744386442-2d48ac47a7eb?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1506880018603-83d5b814b5a6?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1463320726281-696a485928c7?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1550399105-c4db5fb85c18?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1509021436665-8f07dbf5bf1d?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1471970471555-19d4b113e9ed?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1474932430478-367dbb6832c1?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1492770834419-b00f9ed77a03?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1548948897-26b6cd21c0ad?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=500&h=320&fit=crop&q=80&sat=-30",
+  "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1434030216411-0b793f4b6375?w=500&h=320&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1533560777688-f54d7e289f9c?w=500&h=320&fit=crop&q=80",
 ];
 
 const READING_QUOTES = [
@@ -97,43 +99,42 @@ export function VocaVisualPanel() {
         <div
           className="absolute inset-0"
           style={{
-            background: "linear-gradient(135deg, rgba(26,5,51,0.93) 0%, rgba(108,99,255,0.72) 50%, rgba(13,11,26,0.93) 100%)",
+            background:
+              "linear-gradient(135deg, rgba(26,5,51,0.92) 0%, rgba(83,74,183,0.65) 45%, rgba(13,11,26,0.95) 100%)",
           }}
         />
       </div>
 
-      {/* Subtle dark overlay */}
-      <div className="absolute inset-0 z-0 bg-black/40 pointer-events-none" />
+      {/* Extra depth overlay */}
+      <div className="absolute inset-0 z-0 bg-black/35 pointer-events-none" />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col justify-between h-full p-6 lg:p-8 pointer-events-none min-h-full">
+      <div className="relative z-10 flex flex-col justify-between h-full p-8 lg:p-10 pointer-events-none min-h-full">
 
-        {/* Logo + tagline */}
+        {/* Logo + headline */}
         <div className="flex flex-col pointer-events-auto">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-[#6C63FF] flex items-center justify-center shadow-lg shadow-[#6C63FF]/40">
-              <span className="text-xl font-black text-white">V</span>
-            </div>
-            <span className="text-white font-bold text-xl tracking-tight">Voca</span>
+            <VocaMark size={44} className="shadow-[#6C63FF]/40" />
+            <span className="text-white font-extrabold text-2xl tracking-tight">Voca</span>
           </div>
 
-          <h2 className="text-3xl lg:text-4xl xl:text-5xl tracking-tight font-extrabold text-white mt-5 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] leading-tight max-w-[90%]">
-            Your documents.<br />Listening made simple.
+          <h2 className="text-5xl lg:text-6xl xl:text-7xl font-black tracking-tight text-white mt-10 drop-shadow-[0_4px_20px_rgba(0,0,0,0.75)] leading-[1.02] max-w-[92%]">
+            Your documents.<br />Listening made<br />simple.
           </h2>
         </div>
 
         {/* Spacer */}
-        <div className="flex-1 min-h-[20px]" />
+        <div className="flex-1 min-h-[24px]" />
 
         {/* Rotating quotes */}
         <div className="flex flex-col gap-4 mt-4">
           <div
             className="w-full relative pointer-events-auto overflow-hidden items-start text-left shrink-0 rounded-2xl border border-white/10 p-8 flex flex-col justify-center"
             style={{
-              background: "rgba(255,255,255,0.03)",
-              backdropFilter: "blur(6px)",
-              WebkitBackdropFilter: "blur(6px)",
-              boxShadow: "0 8px 32px 0 rgba(0,0,0,0.4)",
+              background: "rgba(255,255,255,0.04)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              boxShadow: "0 8px 32px 0 rgba(0,0,0,0.45)",
             }}
           >
             <div className="min-h-[110px] flex flex-col justify-center w-full items-start">
@@ -162,7 +163,7 @@ export function VocaVisualPanel() {
                       loop={false}
                       className="text-lg xl:text-xl text-white leading-snug font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] line-clamp-3 overflow-hidden"
                     />
-                    <p className="text-[#a89fff] font-medium mt-4 text-sm tracking-wide uppercase drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
+                    <p className="text-[#CECBF6] font-medium mt-4 text-sm tracking-wide uppercase drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
                       — {quotes[currentIndex].author}
                     </p>
                   </motion.div>
@@ -179,7 +180,7 @@ export function VocaVisualPanel() {
                   className={`h-1.5 rounded-full transition-all ${
                     idx === currentIndex
                       ? "w-8 bg-[#6C63FF]"
-                      : "w-2 bg-white/20 hover:bg-white/40"
+                      : "w-2 bg-white/25 hover:bg-white/45"
                   }`}
                   aria-label={`Go to quote ${idx + 1}`}
                 />
@@ -190,7 +191,7 @@ export function VocaVisualPanel() {
           {/* Footer */}
           <div className="pointer-events-auto shrink-0 pb-2">
             <p className="text-xs font-medium text-white/60 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
-              &copy; {new Date().getFullYear()} Voca &mdash; Listen to what matters.
+              &copy; {new Date().getFullYear()} Voca &nbsp;|&nbsp; powered by WDC Solutions
             </p>
           </div>
         </div>
