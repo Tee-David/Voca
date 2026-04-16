@@ -17,8 +17,8 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <div className="fixed bottom-5 inset-x-0 flex justify-center z-50 pointer-events-none px-4">
-      <nav className="pointer-events-auto flex items-center gap-1 bg-background/90 dark:bg-card/90 backdrop-blur-xl border border-border/60 shadow-xl shadow-black/10 rounded-full px-2 py-2">
+    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-background/95 dark:bg-card/95 backdrop-blur-xl border-t border-border/60">
+      <div className="flex items-center justify-around px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {tabs.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/library" && pathname.startsWith(href));
 
@@ -26,7 +26,7 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className="relative flex items-center"
+              className="relative flex items-center justify-center"
             >
               <motion.div
                 className={cn(
@@ -38,7 +38,7 @@ export function BottomNav() {
                 layout
                 transition={{ type: "spring", stiffness: 500, damping: 35 }}
               >
-                <Icon size={18} strokeWidth={active ? 2.5 : 2} />
+                <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
                 <AnimatePresence>
                   {active && (
                     <motion.span
@@ -57,7 +57,7 @@ export function BottomNav() {
             </Link>
           );
         })}
-      </nav>
-    </div>
+      </div>
+    </nav>
   );
 }

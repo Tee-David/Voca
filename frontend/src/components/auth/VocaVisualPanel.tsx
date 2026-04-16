@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import GridMotion from "@/components/ui/GridMotion";
 import TextType from "@/components/ui/TextType";
 import { VocaMark } from "@/components/brand/VocaLogo";
+import BlurText from "@/components/ui/BlurText";
 
 // 28 curated, long-lived Unsplash photo IDs — books, libraries, reading.
 // Any that fail to load fall back to a branded purple gradient tile (see GridMotion onError).
@@ -113,14 +114,17 @@ export function VocaVisualPanel() {
 
         {/* Logo + headline */}
         <div className="flex flex-col pointer-events-auto">
-          <div className="flex items-center gap-3">
-            <VocaMark size={44} className="shadow-[#6C63FF]/40" />
-            <span className="text-white font-extrabold text-2xl tracking-tight">Voca</span>
-          </div>
+          <VocaMark size={48} className="shadow-[#6C63FF]/40" />
 
-          <h2 className="text-5xl lg:text-6xl xl:text-7xl font-black tracking-tight text-white mt-10 drop-shadow-[0_4px_20px_rgba(0,0,0,0.75)] leading-[1.02] max-w-[92%]">
-            Your documents.<br />Listening made<br />simple.
-          </h2>
+          <div className="mt-10 max-w-[92%]">
+            <BlurText
+              text="Read anything. Listen anywhere."
+              delay={120}
+              animateBy="words"
+              direction="top"
+              className="text-5xl lg:text-6xl xl:text-7xl font-black tracking-tight text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.75)] leading-[1.05]"
+            />
+          </div>
         </div>
 
         {/* Spacer */}
@@ -191,7 +195,15 @@ export function VocaVisualPanel() {
           {/* Footer */}
           <div className="pointer-events-auto shrink-0 pb-2">
             <p className="text-xs font-medium text-white/60 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
-              &copy; {new Date().getFullYear()} Voca &nbsp;|&nbsp; powered by WDC Solutions
+              &copy; {new Date().getFullYear()} Voca &nbsp;|&nbsp; powered by{" "}
+              <a
+                href="https://wedigcreativity.com.ng"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/80 hover:text-white underline underline-offset-2 transition"
+              >
+                WDC Solutions
+              </a>
             </p>
           </div>
         </div>
