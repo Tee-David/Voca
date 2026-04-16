@@ -3,7 +3,8 @@
     "allow": [
       "WebSearch",
       "Read(//usr/local/bin/**)",
-      "Bash(ls ~/.nvm/versions/node/*/bin/node)"
+      "Bash(ls ~/.nvm/versions/node/*/bin/node)",
+      "Bash(git config *)"
     ],
     "additionalDirectories": [
       "/home/teedavid/Desktop/Projects/Voca/frontend/.git"
