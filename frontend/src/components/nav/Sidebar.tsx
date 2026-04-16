@@ -4,8 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Library, Headphones, BookAudio, Settings, LogOut,
-  ChevronRight,
+  Home, Plus, Library, Mic, Headphones, Settings, LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { signOut, useSession } from "next-auth/react";
@@ -13,9 +12,11 @@ import { VocaMark } from "@/components/brand/VocaLogo";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/library",    label: "Library",    icon: Library },
-  { href: "/player",     label: "Now Playing", icon: Headphones },
-  { href: "/audiobooks", label: "Audiobooks", icon: BookAudio },
+  { href: "/library",  label: "Home",       icon: Home },
+  { href: "/import",   label: "Import",     icon: Plus },
+  { href: "/books",    label: "Library",    icon: Library },
+  { href: "/voices",   label: "Voices",     icon: Mic },
+  { href: "/player",   label: "Now Playing", icon: Headphones },
 ];
 
 const bottomItems = [

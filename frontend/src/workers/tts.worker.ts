@@ -24,7 +24,13 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
         const { KokoroTTS } = await import("kokoro-js");
         pipeline = await KokoroTTS.from_pretrained(
           "onnx-community/Kokoro-82M-v1.0-ONNX",
-          { dtype: "q8" }
+          { 
+            dtype: "q8", 
+            device: "wasm",
+            progress_callback: (progressInfo: any) => {
+              self.postMessage({ type: "progress", progress: progressInfo });
+            }
+          }
         );
         self.postMessage({ type: "status", status: "ready" });
       } catch (err: any) {
@@ -56,11 +62,9 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
         voice: msg.voice,
         speed: currentSpeed,
       });
-      const wav = audio.toWav();
-      self.postMessage(
-        { type: "sample", voice: msg.voice, audio: wav },
-        [wav]
-      );
+      // toBlob() returns a WAV Blob (structured-cloneable, no Transferable needed)
+      const blob = await audio.toBlob();
+      self.postMessage({ type: "sample", voice: msg.voice, audio: blob });
     } catch (err: any) {
       self.postMessage({ type: "error", error: err?.message ?? "Sample failed" });
     }
@@ -86,18 +90,15 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
           speed: currentSpeed,
         });
 
-        const wav = audio.toWav();
-        self.postMessage(
-          {
-            type: "audio",
-            id: msg.id,
-            index: i,
-            total: sentences.length,
-            sentence,
-            audio: wav,
-          },
-          [wav]
-        );
+        const blob = await audio.toBlob();
+        self.postMessage({
+          type: "audio",
+          id: msg.id,
+          index: i,
+          total: sentences.length,
+          sentence,
+          audio: blob,
+        });
       }
 
       self.postMessage({ type: "done", id: msg.id });

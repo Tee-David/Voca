@@ -18,19 +18,21 @@ export const r2 = new S3Client({
 const BUCKET = process.env.R2_BUCKET_NAME!;
 const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
-/** Generate a presigned URL for direct browser → R2 upload */
+/** Generate a presigned proxy URL for direct browser → R2 upload */
 export async function getUploadUrl(key: string, contentType: string) {
-  const cmd = new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: key,
-    ContentType: contentType,
-  });
-  return getSignedUrl(r2, cmd, { expiresIn: 3600 });
+  // Use our internal proxy to avoid Cloudflare R2 CORS issues from the browser
+  return `/api/files/${key}`;
 }
 
 /** Get a public URL for reading a stored file */
 export function getPublicUrl(key: string) {
   return `${PUBLIC_URL}/${key}`;
+}
+
+/** Generate a presigned URL or proxy URL for direct browser → R2 download */
+export async function getDownloadUrl(key: string) {
+  // Use our internal proxy to avoid Cloudflare R2 CORS issues from the browser
+  return `/api/files/${key}`;
 }
 
 /** Delete a file from R2 */

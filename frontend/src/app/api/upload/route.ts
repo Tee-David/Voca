@@ -20,8 +20,9 @@ export async function POST(req: NextRequest) {
 
   // Step 2: Confirm upload — create the book record
   if (body.confirm && body.r2Key) {
-    const { r2Key, fileName, fileType, fileSize } = body;
-    const title = (fileName ?? "Untitled").replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
+    const { r2Key, title: rawTitle, fileName, fileType, fileSize } = body;
+    const title = rawTitle
+      || toTitleCase((fileName ?? "Untitled").replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim());
 
     const book = await db.book.create({
       data: {
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ bookId: book.id });
+    return NextResponse.json(book);
   }
 
   // Step 1: Just return presigned URL
@@ -63,4 +64,16 @@ const COVER_COLORS = [
 
 function randomCoverColor() {
   return COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)];
+}
+
+function toTitleCase(str: string): string {
+  const lower = ["a","an","the","and","but","or","for","nor","on","at","to","by","in","of","up","as","is"];
+  return str
+    .split(/\s+/)
+    .map((w, i) => {
+      const lw = w.toLowerCase();
+      if (i > 0 && lower.includes(lw)) return lw;
+      return lw.charAt(0).toUpperCase() + lw.slice(1);
+    })
+    .join(" ");
 }

@@ -37,7 +37,7 @@ export async function extractText(
 export async function extractPdfCover(url: string): Promise<string | null> {
   try {
     const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
     const pdf = await pdfjsLib.getDocument(url).promise;
     const page = await pdf.getPage(1);
@@ -70,7 +70,7 @@ async function extractPdf(
   onProgress?: (stage: string, value: number) => void
 ): Promise<Chapter[]> {
   const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
   const pdf = await pdfjsLib.getDocument(url).promise;
 

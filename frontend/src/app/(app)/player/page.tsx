@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Headphones, Play, Pause, SkipBack, SkipForward,
@@ -12,6 +12,7 @@ import { getCachedChapters, cacheChapters } from "@/lib/bookCache";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { extractText, extractPdfCover, type Chapter } from "@/lib/extract";
+import { getFileUrl } from "@/lib/fileUrl";
 
 type Book = {
   id: string;
@@ -21,6 +22,7 @@ type Book = {
   r2Key: string;
   coverColor: string | null;
   coverUrl: string | null;
+  progress?: { currentPage: number; percentComplete: number } | null;
 };
 
 type Preferences = {
@@ -41,9 +43,31 @@ export default function PlayerPage() {
   const [showChapters, setShowChapters] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const initedRef = useRef(false);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const listenStartRef = useRef<number>(0);
 
   const tts = useKokoro();
   const player = usePlayer();
+
+  // Save listen progress to server
+  const saveProgress = useCallback(
+    (chapIdx: number, totalChapters: number) => {
+      if (!book) return;
+      const percent = totalChapters > 0 ? Math.round(((chapIdx + 1) / totalChapters) * 100) : 0;
+      const elapsed = listenStartRef.current > 0 ? Math.round((Date.now() - listenStartRef.current) / 1000) : 0;
+      fetch("/api/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookId: book.id,
+          currentPage: chapIdx,
+          percentComplete: Math.min(percent, 100),
+          totalTimeSec: elapsed > 0 ? elapsed : undefined,
+        }),
+      }).catch(() => {});
+    },
+    [book]
+  );
 
   // Load: last opened book + prefs + cached chapters
   useEffect(() => {
@@ -69,18 +93,21 @@ export default function PlayerPage() {
         const cached = await getCachedChapters(b.id);
         if (cached && cached.length > 0 && !cancelled) {
           setChapters(cached);
+          const startPage = b.progress?.currentPage ?? 0;
+          setChapterIdx(Math.min(startPage, cached.length - 1));
         } else if (!cancelled) {
-          const url = `/api/files/${b.r2Key}`;
-          const extracted = await extractText(url, b.fileType);
+          const fileUrl = await getFileUrl(b.r2Key);
+          const extracted = await extractText(fileUrl, b.fileType);
           if (!cancelled && extracted.length > 0) {
             setChapters(extracted);
             await cacheChapters(b.id, extracted);
+            const startPage = b.progress?.currentPage ?? 0;
+            setChapterIdx(Math.min(startPage, extracted.length - 1));
           }
         }
 
         if (!b.coverUrl && b.fileType === "pdf") {
-          const url = `/api/files/${b.r2Key}`;
-          extractPdfCover(url).then((coverUrl) => {
+          getFileUrl(b.r2Key).then((fileUrl) => extractPdfCover(fileUrl)).then((coverUrl) => {
             if (coverUrl && !cancelled) {
               setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
               fetch(`/api/library/${b.id}/cover`, {
@@ -96,6 +123,45 @@ export default function PlayerPage() {
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Track listen start time
+  useEffect(() => {
+    if (player.playing && listenStartRef.current === 0) {
+      listenStartRef.current = Date.now();
+    }
+  }, [player.playing]);
+
+  // Save progress on chapter change
+  useEffect(() => {
+    if (book && chapters.length > 0) {
+      saveProgress(chapterIdx, chapters.length);
+    }
+  }, [chapterIdx, book, chapters.length, saveProgress]);
+
+  // Periodic progress save every 30s while playing
+  useEffect(() => {
+    if (player.playing && book && chapters.length > 0) {
+      progressTimerRef.current = setInterval(() => {
+        saveProgress(chapterIdx, chapters.length);
+      }, 30000);
+    }
+    return () => {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+    };
+  }, [player.playing, chapterIdx, book, chapters.length, saveProgress]);
+
+  // Save on unmount
+  useEffect(() => {
+    return () => {
+      if (book && chapters.length > 0) {
+        saveProgress(chapterIdx, chapters.length);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Wire TTS audio chunks into player queue

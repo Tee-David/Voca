@@ -1,14 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Bell } from "lucide-react";
 import { VocaMark } from "@/components/brand/VocaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { cn } from "@/lib/utils";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/library": "Library",
+  "/library": "Home",
+  "/import": "Import",
+  "/books": "Library",
+  "/voices": "Voices",
   "/player": "Now Playing",
   "/audiobooks": "Audiobooks",
   "/settings": "Settings",
@@ -48,9 +51,13 @@ export function TopBar() {
           <button className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition relative">
             <Bell size={18} />
           </button>
-          <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0 ml-1">
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            className="w-8 h-8 rounded-full bg-primary/15 hover:bg-primary/25 flex items-center justify-center shrink-0 ml-1 transition"
+          >
             <span className="text-xs font-bold text-primary">{initials}</span>
-          </div>
+          </Link>
         </div>
       </div>
     </header>

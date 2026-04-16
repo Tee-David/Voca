@@ -10,7 +10,7 @@ interface VoiceSelectorProps {
   ttsStatus: TTSStatus;
   onSelect: (voice: VoiceId) => void;
   onSample: (voiceId: string) => void;
-  onSampleReady: (cb: (voice: string, audio: ArrayBuffer) => void) => void;
+  onSampleReady: (cb: (voice: string, audio: Blob) => void) => void;
 }
 
 const GENDER_COLORS: Record<string, string> = {
@@ -40,10 +40,9 @@ export function VoiceSelector({
   }, []);
 
   useEffect(() => {
-    onSampleReady((voice: string, buffer: ArrayBuffer) => {
+    onSampleReady((voice: string, blob: Blob) => {
       setLoadingVoice(null);
       if (audioRef.current) {
-        const blob = new Blob([buffer], { type: "audio/wav" });
         audioRef.current.src = URL.createObjectURL(blob);
         audioRef.current.play().catch(() => {});
         setPlayingVoice(voice);

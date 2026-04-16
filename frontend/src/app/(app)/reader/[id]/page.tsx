@@ -6,11 +6,17 @@ import {
   ArrowLeft, ChevronLeft, ChevronRight, List, Settings2,
   Loader2, Minus, Plus, Play, Pause, Volume2, Bookmark,
   BookmarkCheck, Moon, Sun, Type, Download, Timer, X,
-  SkipBack, SkipForward, Maximize2,
+  SkipBack, SkipForward, Maximize2, RotateCcw, RotateCw, MessageSquare, Search, MoreHorizontal
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { BottomSheet, BottomSheetTrigger, BottomSheetContent } from "@/components/ui/bottom-sheet";
 import { extractText, extractPdfCover, type Chapter } from "@/lib/extract";
-import { cacheChapters, getCachedChapters } from "@/lib/bookCache";
+import {
+  cacheChapters, getCachedChapters,
+  getCachedAudio, putCachedAudio, hasCachedAudio,
+  requestPersistentStorage,
+} from "@/lib/bookCache";
+import { getFileUrl } from "@/lib/fileUrl";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
@@ -70,6 +76,7 @@ export default function ReaderPage() {
   const [fontFamily, setFontFamily] = useState(FONT_FAMILIES[0].value);
   const [theme, setTheme] = useState<ReaderTheme>("light");
   const [currentSentence, setCurrentSentence] = useState(-1);
+  const [currentWord, setCurrentWord] = useState(-1);
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [sleepTimer, setSleepTimer] = useState(0);
   const [sleepRemaining, setSleepRemaining] = useState(0);
@@ -77,6 +84,10 @@ export default function ReaderPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const sleepRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingPlayRef = useRef(false);
+  const wordAnimRef = useRef<number>(0);
+  const genCollectorRef = useRef<{ blobs: Blob[]; sentences: string[]; bookId: string; chapterIdx: number; voice: string; speed: number } | null>(null);
+  const [cachedChaptersSet, setCachedChaptersSet] = useState<Set<number>>(new Set());
+  const [downloadState, setDownloadState] = useState<{ active: boolean; chapterIdx: number; total: number } | null>(null);
 
   const tts = useKokoro();
   const player = usePlayer();
@@ -114,8 +125,6 @@ export default function ReaderPage() {
         setBook(data);
         if (data.bookmarks) setBookmarks(data.bookmarks);
 
-        const url = `/api/files/${data.r2Key}`;
-
         const cached = await getCachedChapters(data.id);
         if (cached && cached.length > 0) {
           setChapters(cached);
@@ -123,7 +132,8 @@ export default function ReaderPage() {
           setCurrentChapter(Math.min(startPage, cached.length - 1));
         } else {
           setExtracting(true);
-          const extracted = await extractText(url, data.fileType, (stage, value) =>
+          const fileUrl = await getFileUrl(data.r2Key);
+          const extracted = await extractText(fileUrl, data.fileType, (stage, value) =>
             setExtractStage({ stage, value })
           );
           setChapters(extracted);
@@ -133,7 +143,7 @@ export default function ReaderPage() {
         }
 
         if (!data.coverUrl && data.fileType === "pdf") {
-          extractPdfCover(url).then((coverUrl) => {
+          getFileUrl(data.r2Key).then((fileUrl) => extractPdfCover(fileUrl)).then((coverUrl) => {
             if (coverUrl) {
               setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
               fetch(`/api/library/${data.id}/cover`, {
@@ -162,15 +172,87 @@ export default function ReaderPage() {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentChapter]);
 
+  // Auto-scroll to current sentence during TTS playback
+  useEffect(() => {
+    if (currentSentence < 0 || !player.playing) return;
+    const el = document.querySelector(`[data-sentence="${currentSentence}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [currentSentence, player.playing]);
+
   useEffect(() => {
     tts.onChunk((chunk) => {
       player.enqueueChunk(chunk.audio);
-      setCurrentSentence(chunk.index);
+      // Write-through collect for cache
+      if (genCollectorRef.current) {
+        genCollectorRef.current.blobs.push(chunk.audio);
+        genCollectorRef.current.sentences.push(chunk.sentence);
+      }
     });
     tts.onDone(() => {
-      setCurrentSentence(-1);
+      // Persist collected audio to IndexedDB cache
+      const c = genCollectorRef.current;
+      if (c && c.blobs.length > 0) {
+        putCachedAudio(c.bookId, c.chapterIdx, c.voice, c.speed, c.blobs, c.sentences)
+          .then(() => {
+            setCachedChaptersSet((prev) => new Set(prev).add(c.chapterIdx));
+          })
+          .catch(() => {});
+      }
+      genCollectorRef.current = null;
     });
   }, []);
+
+  // Check which chapters are already cached for this (voice, speed) combo
+  useEffect(() => {
+    if (!book || chapters.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = new Set<number>();
+      for (let i = 0; i < chapters.length; i++) {
+        const has = await hasCachedAudio(book.id, i, tts.voice, tts.speed);
+        if (has) results.add(i);
+      }
+      if (!cancelled) setCachedChaptersSet(results);
+    })();
+    return () => { cancelled = true; };
+  }, [book, chapters.length, tts.voice, tts.speed]);
+
+  // Sync currentSentence with the chunk currently playing
+  useEffect(() => {
+    if (player.playing) {
+      setCurrentSentence(player.chunkIndex);
+      setCurrentWord(0);
+    } else if (!player.playing && player.currentTime === 0 && player.duration === 0) {
+      setCurrentSentence(-1);
+      setCurrentWord(-1);
+    }
+  }, [player.chunkIndex, player.playing]);
+
+  // Word-by-word highlight: estimate current word from audio progress
+  useEffect(() => {
+    if (currentSentence < 0 || !player.playing || player.duration <= 0) {
+      cancelAnimationFrame(wordAnimRef.current);
+      return;
+    }
+
+    const ch = chapters[currentChapter];
+    const sentences = ch ? ch.text.replace(/([.!?])\s+/g, "$1|SPLIT|").split("|SPLIT|") : [];
+    const sentenceText = sentences[currentSentence] || "";
+    const words = sentenceText.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return;
+
+    function tick() {
+      const ratio = player.duration > 0 ? player.currentTime / player.duration : 0;
+      const wordIdx = Math.min(Math.floor(ratio * words.length), words.length - 1);
+      setCurrentWord(wordIdx);
+      wordAnimRef.current = requestAnimationFrame(tick);
+    }
+    wordAnimRef.current = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(wordAnimRef.current);
+  }, [currentSentence, player.playing, player.duration, player.currentTime, chapters, currentChapter]);
 
   // Sleep timer
   useEffect(() => {
@@ -196,20 +278,39 @@ export default function ReaderPage() {
     player.stop();
     player.resetQueue();
     setCurrentSentence(-1);
+    setCurrentWord(-1);
   }
+
+  // Play chapter: cache-first with write-through fallback to TTS
+  const playChapterNow = useCallback(async () => {
+    const chapter = chapters[currentChapter];
+    if (!chapter || !book) return;
+    requestPersistentStorage().catch(() => {});
+
+    player.resetQueue();
+    player.setMeta(book.id, book.title, chapter.title);
+
+    const hit = await getCachedAudio(book.id, currentChapter, tts.voice, tts.speed);
+    if (hit && hit.blobs.length > 0) {
+      hit.blobs.forEach((blob) => player.enqueueChunk(blob));
+      return;
+    }
+
+    genCollectorRef.current = {
+      blobs: [], sentences: [],
+      bookId: book.id, chapterIdx: currentChapter,
+      voice: tts.voice, speed: tts.speed,
+    };
+    tts.generate(chapter.text, `${book.id}-ch${currentChapter}`);
+  }, [book, chapters, currentChapter, tts, player]);
 
   // Auto-start generation once TTS becomes ready after user requested play
   useEffect(() => {
     if (tts.status === "ready" && pendingPlayRef.current) {
       pendingPlayRef.current = false;
-      const chapter = chapters[currentChapter];
-      if (chapter && book) {
-        player.resetQueue();
-        player.setMeta(book.id, book.title, chapter.title);
-        tts.generate(chapter.text, `${book.id}-ch${currentChapter}`);
-      }
+      playChapterNow();
     }
-  }, [tts.status]);
+  }, [tts.status, playChapterNow]);
 
   function handlePlay() {
     const chapter = chapters[currentChapter];
@@ -227,12 +328,54 @@ export default function ReaderPage() {
     }
 
     if (tts.status === "ready") {
-      player.resetQueue();
-      player.setMeta(book.id, book.title, chapter.title);
-      tts.generate(chapter.text, `${book.id}-ch${currentChapter}`);
+      playChapterNow();
     } else {
       player.play();
     }
+  }
+
+  // Download all chapters for offline — generate + cache sequentially
+  async function downloadForOffline() {
+    if (!book || chapters.length === 0) return;
+    if (tts.status === "idle" || tts.status === "error") {
+      tts.initWorker();
+      // wait briefly for worker
+      await new Promise<void>((resolve) => {
+        const iv = setInterval(() => { if (tts.status === "ready") { clearInterval(iv); resolve(); } }, 250);
+        setTimeout(() => { clearInterval(iv); resolve(); }, 20000);
+      });
+    }
+    setDownloadState({ active: true, chapterIdx: 0, total: chapters.length });
+    for (let i = 0; i < chapters.length; i++) {
+      setDownloadState({ active: true, chapterIdx: i, total: chapters.length });
+      const already = await hasCachedAudio(book.id, i, tts.voice, tts.speed);
+      if (already) continue;
+      await new Promise<void>((resolve) => {
+        const blobs: Blob[] = [];
+        const sents: string[] = [];
+        tts.onChunk((chunk) => {
+          blobs.push(chunk.audio);
+          sents.push(chunk.sentence);
+        });
+        tts.onDone(async () => {
+          if (blobs.length > 0) {
+            await putCachedAudio(book.id, i, tts.voice, tts.speed, blobs, sents);
+            setCachedChaptersSet((prev) => new Set(prev).add(i));
+          }
+          resolve();
+        });
+        tts.generate(chapters[i].text, `dl-${book.id}-ch${i}`);
+      });
+    }
+    setDownloadState(null);
+    // restore normal playback handlers
+    tts.onChunk((chunk) => {
+      player.enqueueChunk(chunk.audio);
+      if (genCollectorRef.current) {
+        genCollectorRef.current.blobs.push(chunk.audio);
+        genCollectorRef.current.sentences.push(chunk.sentence);
+      }
+    });
   }
 
   function handleSentenceClick(sentenceIdx: number) {
@@ -297,6 +440,17 @@ export default function ReaderPage() {
   const chapterProgress = chapters.length > 0 ? ((currentChapter + 1) / chapters.length) * 100 : 0;
   const themeStyle = THEME_STYLES[theme];
 
+  function formatTime(s: number) {
+    if (!s || isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  function goRelativeTime(delta: number) {
+    player.seek(Math.max(0, Math.min(player.duration, player.currentTime + delta)));
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -320,426 +474,237 @@ export default function ReaderPage() {
   const sentences = chapter ? chapter.text.replace(/([.!?])\s+/g, "$1|SPLIT|").split("|SPLIT|") : [];
 
   return (
-    <div className={cn("flex flex-col h-[calc(100dvh-5rem)] lg:h-dvh", themeStyle.bg)}>
-      {/* ─── Top bar ─── */}
-      <div className={cn(
-        "flex items-center justify-between px-4 py-2.5 border-b shrink-0 backdrop-blur-sm",
-        theme === "dark" ? "border-white/10 bg-[#1a1a2e]/95" : theme === "sepia" ? "border-[#d4c5a9] bg-[#f4ecd8]/95" : "border-border/50 bg-white/95"
-      )}>
-        <button onClick={() => router.push("/library")} className="p-1.5 text-muted-foreground hover:text-foreground transition">
-          <ArrowLeft size={20} />
+    <div className={cn("flex flex-col h-[calc(100dvh-5rem)] lg:h-dvh relative overflow-hidden", themeStyle.bg)}>
+      
+      {/* ─── Top Header ─── */}
+      <div className="flex items-center justify-between px-4 py-4 z-10 shrink-0">
+        <button onClick={() => router.push("/library")} className="w-10 h-10 rounded-full flex items-center justify-center bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition backdrop-blur-sm">
+          <ArrowLeft size={20} className={themeStyle.text} />
         </button>
 
-        <div className="text-center min-w-0 flex-1 px-4">
-          <p className={cn("text-sm font-semibold truncate", themeStyle.text)}>{book.title}</p>
-          {chapter && <p className="text-xs text-muted-foreground truncate">{chapter.title}</p>}
-        </div>
-
-        <div className="flex items-center gap-0.5">
-          {/* Bookmark toggle */}
-          <button
-            onClick={currentPageBookmarked ? () => {
-              const bm = bookmarks.find((b) => b.page === currentChapter);
-              if (bm) removeBookmark(bm.id);
-            } : addBookmark}
-            className={cn(
-              "p-1.5 transition rounded-lg",
-              currentPageBookmarked ? "text-amber-500" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {currentPageBookmarked ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
-          </button>
-          <button
-            onClick={() => togglePanel("voice")}
-            className={cn("p-1.5 transition rounded-lg", panel === "voice" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}
-          >
-            <Volume2 size={18} />
-          </button>
-          <button
-            onClick={() => togglePanel("chapters")}
-            className={cn("p-1.5 transition rounded-lg", panel === "chapters" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}
-          >
-            <List size={18} />
-          </button>
-          <button
-            onClick={() => togglePanel("settings")}
-            className={cn("p-1.5 transition rounded-lg", panel === "settings" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}
-          >
-            <Settings2 size={18} />
-          </button>
-          <button
-            onClick={toggleFullscreen}
-            className="p-1.5 text-muted-foreground hover:text-foreground transition rounded-lg hidden lg:block"
-          >
-            <Maximize2 size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* ─── Progress bar ─── */}
-      <div className="h-0.5 bg-muted shrink-0">
-        <div className="h-full bg-primary transition-all" style={{ width: `${chapterProgress}%` }} />
-      </div>
-
-      {/* ─── Main content area ─── */}
-      <div className="relative flex-1 overflow-hidden">
-        {/* Voice selector panel */}
-        <AnimatePresence>
-          {panel === "voice" && (
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className={cn("absolute inset-0 z-20 overflow-y-auto p-4", themeStyle.bg)}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className={cn("font-bold", themeStyle.text)}>Voice & Speed</h3>
-                <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <VoiceSelector
-                selectedVoice={tts.voice}
-                ttsStatus={tts.status}
-                onSelect={(v) => tts.changeVoice(v)}
-                onSample={(v) => tts.playSample(v)}
-                onSampleReady={tts.onSample}
-              />
-
-              <div className="mt-6">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-                  Speed — <span className="text-primary">{tts.speed.toFixed(2)}×</span>
-                </label>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={2.0}
-                  step={0.05}
-                  value={tts.speed}
-                  onChange={(e) => tts.changeSpeed(parseFloat(e.target.value))}
-                  className="voca-speed-range w-full"
-                />
-                <div className="flex justify-between mt-1.5 px-0.5">
-                  {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => tts.changeSpeed(s)}
-                      className={cn(
-                        "text-[10px] font-semibold tabular-nums transition",
-                        Math.abs(tts.speed - s) < 0.03
-                          ? "text-primary"
-                          : "text-muted-foreground/60 hover:text-foreground"
-                      )}
-                    >
-                      {s}×
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Sleep timer */}
-              <div className="mt-6">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-                  <Timer size={12} className="inline mr-1" />
-                  Sleep Timer
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  {[0, 5, 10, 15, 30, 60].map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setSleepTimer(m)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-semibold transition",
-                        sleepTimer === m ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                      )}
-                    >
-                      {m === 0 ? "Off" : `${m}m`}
-                    </button>
-                  ))}
-                </div>
-                {sleepRemaining > 0 && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Auto-pause in {Math.floor(sleepRemaining / 60)}:{String(sleepRemaining % 60).padStart(2, "0")}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-4 text-xs text-muted-foreground">
-                {tts.status === "idle" && "Tap play to load TTS model"}
-                {tts.status === "loading" && "Loading TTS model (~50MB)…"}
-                {tts.status === "ready" && "✓ TTS ready"}
-                {tts.status === "generating" && "Generating audio…"}
-                {tts.status === "error" && "TTS error — tap play to retry"}
-              </div>
-
-              {/* Audiobook export */}
-              {book && chapters.length > 0 && (
-                <AudiobookExport
-                  bookId={book.id}
-                  bookTitle={book.title}
-                  chapters={chapters}
-                  voice={tts.voice}
-                  speed={tts.speed}
-                />
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Chapters panel */}
-        <AnimatePresence>
-          {panel === "chapters" && (
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className={cn("absolute inset-0 z-20 overflow-y-auto", themeStyle.bg)}
-            >
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className={cn("font-bold", themeStyle.text)}>Chapters</h3>
-                  <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground">
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="space-y-1">
-                  {chapters.map((ch, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => { setCurrentChapter(idx); setPanel(null); }}
-                      className={cn(
-                        "w-full text-left px-3 py-2.5 rounded-xl text-sm transition flex items-center gap-2",
-                        idx === currentChapter
-                          ? "bg-primary/10 text-primary font-semibold"
-                          : "hover:bg-muted"
-                      )}
-                    >
-                      <span className="text-muted-foreground text-xs w-6 shrink-0">{idx + 1}</span>
-                      <span className={cn("truncate", idx === currentChapter ? "text-primary" : themeStyle.text)}>
-                        {ch.title}
-                      </span>
-                      {bookmarks.some((b) => b.page === idx) && (
-                        <BookmarkCheck size={12} className="text-amber-500 shrink-0 ml-auto" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Display settings panel */}
-        <AnimatePresence>
-          {panel === "settings" && (
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className={cn(
-                "absolute bottom-0 inset-x-0 z-20 border-t rounded-t-2xl p-5",
-                theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border"
-              )}
-            >
-              <div className="flex items-center justify-between mb-5">
-                <h3 className={cn("font-bold", themeStyle.text)}>Display Settings</h3>
-                <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground">
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Theme */}
-              <div className="mb-5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Theme</label>
-                <div className="flex gap-2">
-                  {(Object.entries(THEME_STYLES) as [ReaderTheme, typeof THEME_STYLES["light"]][]).map(([key, style]) => (
-                    <button
-                      key={key}
-                      onClick={() => setTheme(key)}
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition border",
-                        theme === key
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-transparent bg-muted text-foreground"
-                      )}
-                    >
-                      <style.icon size={14} />
-                      {style.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Font family */}
-              <div className="mb-5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Font</label>
-                <div className="flex gap-2">
-                  {FONT_FAMILIES.map((f) => (
-                    <button
-                      key={f.label}
-                      onClick={() => setFontFamily(f.value)}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-xs font-semibold transition",
-                        fontFamily === f.value ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                      )}
-                      style={{ fontFamily: f.value }}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Font size */}
-              <div className="mb-5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Size</label>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setFontSize((s) => Math.max(12, s - 2))} className="p-2 rounded-lg bg-muted text-foreground">
-                    <Minus size={16} />
-                  </button>
-                  <div className="flex-1 h-1.5 rounded-full bg-muted relative">
-                    <div className="h-full bg-primary rounded-full" style={{ width: `${((fontSize - 12) / 16) * 100}%` }} />
+        <BottomSheet>
+          <BottomSheetTrigger>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition backdrop-blur-sm">
+              <MoreHorizontal size={20} className={themeStyle.text} />
+            </div>
+          </BottomSheetTrigger>
+          <BottomSheetContent className="bg-[#18181A] text-white border-white/5">
+            <div className="p-4 pt-2">
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-14 bg-white/20 rounded shadow-md relative overflow-hidden border border-white/10">
+                    {book.coverUrl && <img src={book.coverUrl} className="w-full h-full object-cover" alt="Cover" />}
                   </div>
-                  <button onClick={() => setFontSize((s) => Math.min(28, s + 2))} className="p-2 rounded-lg bg-muted text-foreground">
-                    <Plus size={16} />
-                  </button>
-                  <span className="text-xs font-semibold w-8 text-center text-muted-foreground">{fontSize}</span>
+                  <h3 className="font-bold text-lg">{chapter?.title || book.title}</h3>
                 </div>
+                <BottomSheetTrigger>
+                  <button className="text-white/60 hover:text-white p-2"><X size={24}/></button>
+                </BottomSheetTrigger>
               </div>
 
-              {/* Line spacing */}
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Line Spacing</label>
-                <div className="flex gap-2">
-                  {[1.4, 1.6, 1.8, 2.0, 2.2].map((lh) => (
-                    <button
-                      key={lh}
-                      onClick={() => setLineHeight(lh)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-semibold transition",
-                        lineHeight === lh ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                      )}
-                    >
-                      {lh}×
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Bookmarks panel */}
-        <AnimatePresence>
-          {panel === "bookmarks" && (
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className={cn("absolute inset-0 z-20 overflow-y-auto p-4", themeStyle.bg)}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className={cn("font-bold", themeStyle.text)}>
-                  Bookmarks ({bookmarks.length})
-                </h3>
-                <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground">
-                  <X size={18} />
+              {/* Drawer Grid Actions */}
+              <div className="grid grid-cols-3 gap-3 mb-8">
+                <button className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
+                  <Search size={24} className="text-white/80" />
+                  <span className="text-xs font-semibold">Search</span>
+                </button>
+                <button className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
+                  <MessageSquare size={24} className="text-white/80" />
+                  <span className="text-xs font-semibold">Voice Chat</span>
+                </button>
+                <button onClick={() => setSleepTimer(15)} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", sleepTimer > 0 ? "bg-primary text-primary-foreground" : "bg-white/5 hover:bg-white/10")}>
+                  <Timer size={24} className={sleepTimer > 0 ? "scale-110" : "text-white/80"} />
+                  <span className="text-xs font-semibold">Sleep timer</span>
                 </button>
               </div>
-              {bookmarks.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">
-                  No bookmarks yet. Tap the bookmark icon to save your place.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {bookmarks.map((bm) => (
-                    <button
-                      key={bm.id}
-                      onClick={() => { setCurrentChapter(bm.page); setPanel(null); }}
-                      className="w-full text-left p-3 rounded-xl bg-muted/50 hover:bg-muted transition"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-semibold text-primary">
-                          Chapter {bm.page + 1}
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }}
-                          className="text-muted-foreground hover:text-destructive p-0.5"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                      <p className={cn("text-xs line-clamp-2", themeStyle.text)}>{bm.text}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
 
-        {/* ─── Reading content ─── */}
-        <div
-          ref={contentRef}
-          className="h-full overflow-y-auto px-5 sm:px-8 lg:px-16 py-6"
-          onClick={() => panel && setPanel(null)}
-        >
+              {/* Vertical Actions */}
+              <div className="flex flex-col gap-1">
+                <button onClick={() => togglePanel("settings")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
+                  <Type size={20} className="text-white/60" />
+                  <span className="text-sm font-semibold">Hide text</span>
+                </button>
+                <button onClick={() => togglePanel("bookmarks")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
+                  <Bookmark size={20} className="text-white/60" />
+                  <span className="text-sm font-semibold">Bookmarks</span>
+                </button>
+                <button className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
+                  <List size={20} className="text-white/60" />
+                  <span className="text-sm font-semibold">Pronunciations</span>
+                </button>
+                <button
+                  onClick={downloadForOffline}
+                  disabled={!!downloadState?.active || tts.status === 'loading'}
+                  className="flex items-center justify-between p-4 hover:bg-white/5 rounded-xl transition w-full text-left disabled:opacity-60"
+                >
+                  <div className="flex items-center gap-4">
+                    <Download size={20} className="text-white/60" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold">Download for offline</span>
+                      {downloadState?.active ? (
+                        <span className="text-[11px] text-primary">
+                          Chapter {downloadState.chapterIdx + 1} of {downloadState.total}…
+                        </span>
+                      ) : cachedChaptersSet.size > 0 ? (
+                        <span className="text-[11px] text-white/40">
+                          {cachedChaptersSet.size}/{chapters.length} chapters cached
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  {(downloadState?.active || tts.status === 'loading') && (
+                    <Loader2 size={16} className="animate-spin text-primary" />
+                  )}
+                </button>
+                <button onClick={() => togglePanel("settings")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
+                  <Settings2 size={20} className="text-white/60" />
+                  <span className="text-sm font-semibold">Preferences</span>
+                </button>
+              </div>
+            </div>
+          </BottomSheetContent>
+        </BottomSheet>
+      </div>
+
+      {/* ─── Reading Layout Panels (Voice, Settings, Chapters etc) ─── */}
+      <AnimatePresence>
+        {panel === "voice" && (
+          <motion.div
+            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={cn("font-bold", themeStyle.text)}>Voice & Speed</h3>
+              <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <VoiceSelector selectedVoice={tts.voice} ttsStatus={tts.status} onSelect={(v) => tts.changeVoice(v)} onSample={(v) => tts.playSample(v)} onSampleReady={tts.onSample} />
+            <div className="mt-6">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Speed — <span className="text-primary">{tts.speed.toFixed(2)}×</span></label>
+              <input type="range" min={0.5} max={2.0} step={0.05} value={tts.speed} onChange={(e) => tts.changeSpeed(parseFloat(e.target.value))} className="voca-speed-range w-full" />
+            </div>
+            {book && chapters.length > 0 && <AudiobookExport bookId={book.id} bookTitle={book.title} chapters={chapters} voice={tts.voice} speed={tts.speed} />}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {panel === "chapters" && (
+          <motion.div
+            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute inset-0 z-30 overflow-y-auto", themeStyle.bg)}
+          >
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={cn("font-bold", themeStyle.text)}>Chapters</h3>
+                <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+              </div>
+              <div className="space-y-1">
+                {chapters.map((ch, idx) => (
+                  <button key={idx} onClick={() => { setCurrentChapter(idx); setPanel(null); }} className={cn("w-full text-left px-3 py-2.5 rounded-xl text-sm transition flex items-center gap-2", idx === currentChapter ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted")}>
+                    <span className="text-muted-foreground text-xs w-6 shrink-0">{idx + 1}</span>
+                    <span className={cn("truncate", idx === currentChapter ? "text-primary" : themeStyle.text)}>{ch.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {panel === "settings" && (
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute bottom-0 inset-x-0 z-30 border-t rounded-t-2xl p-5", theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border")}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className={cn("font-bold", themeStyle.text)}>Display Settings</h3>
+              <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <div className="mb-5 flex gap-2">
+              {(Object.entries(THEME_STYLES) as [ReaderTheme, typeof THEME_STYLES["light"]][]).map(([key, style]) => (
+                <button key={key} onClick={() => setTheme(key)} className={cn("flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition border", theme === key ? "border-primary bg-primary/10 text-primary" : "border-transparent bg-muted text-foreground")}>
+                  <style.icon size={14} />{style.label}
+                </button>
+              ))}
+            </div>
+            <div className="mb-5 flex gap-2">
+              {FONT_FAMILIES.map((f) => (
+                <button key={f.label} onClick={() => setFontFamily(f.value)} className={cn("px-4 py-2 rounded-xl text-xs font-semibold transition", fontFamily === f.value ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")} style={{ fontFamily: f.value }}>{f.label}</button>
+              ))}
+            </div>
+            <div className="mb-5 flex items-center gap-3">
+              <button onClick={() => setFontSize((s) => Math.max(12, s - 2))} className="p-2 bg-muted rounded"><Minus size={16}/></button>
+              <div className="flex-1 h-1.5 bg-muted rounded-full relative"><div className="absolute inset-y-0 left-0 bg-primary rounded-full" style={{ width: `${((fontSize - 12) / 16) * 100}%` }} /></div>
+              <button onClick={() => setFontSize((s) => Math.min(28, s + 2))} className="p-2 bg-muted rounded"><Plus size={16}/></button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Reading content ─── */}
+      <div
+        ref={contentRef}
+        className="flex-1 overflow-y-auto px-6 sm:px-12 py-6 relative outline-none pb-[280px]"
+        onClick={() => panel && setPanel(null)}
+      >
+        <div className="max-w-3xl mx-auto">
+          <p className="text-muted-foreground text-sm font-medium mb-8">
+            {new Date().toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric'})}
+          </p>
+
           {extracting ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 size={24} className="animate-spin text-primary mb-3" />
               <p className="text-sm text-muted-foreground">
-                {extractStage?.stage === "ocr"
-                  ? `Running OCR on scanned pages… ${extractStage.value}%`
-                  : extractStage?.stage === "extract"
-                  ? `Extracting text… ${extractStage.value}%`
-                  : "Extracting text…"}
+                {extractStage ? `Extracting text… ${extractStage.value}%` : "Extracting text…"}
               </p>
-              {extractStage && (
-                <div className="mt-3 w-48 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${extractStage.value}%` }}
-                  />
-                </div>
-              )}
             </div>
           ) : chapter ? (
-            <article className="max-w-prose mx-auto">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-6">
+            <article>
+              <h1 className={cn("text-4xl sm:text-5xl font-bold mb-10 text-balance", themeStyle.text)}>
                 {chapter.title}
-              </h2>
+              </h1>
               <div style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}>
-                {sentences.map((sentence, idx) => (
-                  <span
-                    key={idx}
-                    onClick={(e) => { e.stopPropagation(); handleSentenceClick(idx); }}
-                    className={cn(
-                      "transition-colors duration-200 cursor-pointer hover:bg-primary/10 rounded",
-                      idx === currentSentence
-                        ? "bg-primary/20 rounded px-0.5"
-                        : "",
-                      themeStyle.text
-                    )}
-                  >
-                    {sentence}{" "}
-                  </span>
-                ))}
+                {sentences.map((sentence, sIdx) => {
+                  const isActiveSentence = sIdx === currentSentence;
+                  if (isActiveSentence && currentWord >= 0) {
+                    const words = sentence.split(/(\s+)/);
+                    let wordCounter = -1;
+                    return (
+                      <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("cursor-pointer rounded transition-colors duration-200", isActiveSentence ? "bg-primary/20 xl:bg-primary/10" : "", themeStyle.text)}>
+                        {words.map((part, pIdx) => {
+                          const isSpace = /^\s+$/.test(part);
+                          if (!isSpace) wordCounter++;
+                          const isActiveWord = !isSpace && wordCounter === currentWord;
+                          return (
+                            <span key={pIdx} className={cn("transition-colors duration-150", isActiveWord ? "bg-primary text-primary-foreground rounded-sm px-0.5 py-0.5" : wordCounter <= currentWord && !isSpace ? "opacity-70" : "")}>{part}</span>
+                          );
+                        })}{" "}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("transition-colors duration-200 cursor-pointer hover:bg-primary/10 rounded", isActiveSentence ? "bg-[#273a21] text-white rounded px-0.5" : "", themeStyle.text)}>
+                      {sentence}{" "}
+                    </span>
+                  );
+                })}
               </div>
             </article>
           ) : (
-            <p className="text-center text-muted-foreground py-20">No content to display</p>
+            <p className="text-muted-foreground py-20">No content to display</p>
           )}
         </div>
       </div>
 
       {/* ─── Bottom controls ─── */}
       <div className={cn(
-        "shrink-0 border-t backdrop-blur-sm",
+        "shrink-0 border-t backdrop-blur-sm z-30",
         theme === "dark" ? "border-white/10 bg-[#1a1a2e]/95" : theme === "sepia" ? "border-[#d4c5a9] bg-[#f4ecd8]/95" : "border-border/50 bg-white/95"
       )}>
         <div className="flex items-center justify-between px-4 py-2.5 max-w-2xl mx-auto">

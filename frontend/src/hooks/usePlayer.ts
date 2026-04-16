@@ -6,6 +6,7 @@ export type PlayerState = {
   playing: boolean;
   currentTime: number;
   duration: number;
+  chunkIndex: number;
   bookId: string | null;
   bookTitle: string | null;
   chapterTitle: string | null;
@@ -13,13 +14,14 @@ export type PlayerState = {
 
 export function usePlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const queueRef = useRef<ArrayBuffer[]>([]);
+  const queueRef = useRef<(Blob | ArrayBuffer)[]>([]);
   const playingIdx = useRef(0);
 
   const [state, setState] = useState<PlayerState>({
     playing: false,
     currentTime: 0,
     duration: 0,
+    chunkIndex: 0,
     bookId: null,
     bookTitle: null,
     chapterTitle: null,
@@ -48,17 +50,18 @@ export function usePlayer() {
 
     playingIdx.current++;
     if (playingIdx.current < queueRef.current.length) {
+      setState((s) => ({ ...s, chunkIndex: playingIdx.current }));
       playBuffer(queueRef.current[playingIdx.current]);
     } else {
       setState((s) => ({ ...s, playing: false }));
     }
   }, []);
 
-  const playBuffer = useCallback((buffer: ArrayBuffer) => {
+  const playBuffer = useCallback((buffer: Blob | ArrayBuffer) => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const blob = new Blob([buffer], { type: "audio/wav" });
+    const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: "audio/wav" });
     const url = URL.createObjectURL(blob);
 
     audio.src = url;
@@ -71,7 +74,7 @@ export function usePlayer() {
   }, []);
 
   const enqueueChunk = useCallback(
-    (buffer: ArrayBuffer) => {
+    (buffer: Blob | ArrayBuffer) => {
       queueRef.current.push(buffer);
       if (queueRef.current.length === 1) {
         playingIdx.current = 0;
@@ -111,6 +114,7 @@ export function usePlayer() {
       playing: false,
       currentTime: 0,
       duration: 0,
+      chunkIndex: 0,
       bookId: null,
       bookTitle: null,
       chapterTitle: null,
@@ -140,7 +144,7 @@ export function usePlayer() {
   }, []);
 
   const playSingleBuffer = useCallback(
-    (buffer: ArrayBuffer) => {
+    (buffer: Blob | ArrayBuffer) => {
       queueRef.current = [buffer];
       playingIdx.current = 0;
       playBuffer(buffer);

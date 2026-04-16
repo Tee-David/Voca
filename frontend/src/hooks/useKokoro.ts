@@ -9,7 +9,7 @@ export type AudioChunk = {
   index: number;
   total: number;
   sentence: string;
-  audio: ArrayBuffer;
+  audio: Blob;
 };
 
 export const KOKORO_VOICES = [
@@ -31,9 +31,10 @@ export function useKokoro() {
   const [status, setStatus] = useState<TTSStatus>("idle");
   const [voice, setVoice] = useState<VoiceId>("af_bella");
   const [speed, setSpeed] = useState(1.0);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const onChunkRef = useRef<((chunk: AudioChunk) => void) | null>(null);
   const onDoneRef = useRef<((id: string) => void) | null>(null);
-  const onSampleRef = useRef<((voice: string, audio: ArrayBuffer) => void) | null>(null);
+  const onSampleRef = useRef<((voice: string, audio: Blob) => void) | null>(null);
 
   const initWorker = useCallback(() => {
     if (workerRef.current) return;
@@ -45,7 +46,10 @@ export function useKokoro() {
 
     worker.onmessage = (e) => {
       const msg = e.data;
-      if (msg.type === "status") setStatus(msg.status);
+      if (msg.type === "status") {
+        setStatus(msg.status);
+        if (msg.status === "ready") setDownloadProgress(100);
+      }
       if (msg.type === "generating") setStatus("generating");
       if (msg.type === "audio") onChunkRef.current?.(msg);
       if (msg.type === "done") {
@@ -54,6 +58,13 @@ export function useKokoro() {
       }
       if (msg.type === "sample") onSampleRef.current?.(msg.voice, msg.audio);
       if (msg.type === "error") setStatus("error");
+      
+      if (msg.type === "progress") {
+        const { status, progress, file } = msg.progress;
+        if (typeof progress === "number") {
+          setDownloadProgress((prev) => Math.max(prev, Math.round(progress)));
+        }
+      }
     };
 
     workerRef.current = worker;
@@ -97,6 +108,7 @@ export function useKokoro() {
     status,
     voice,
     speed,
+    downloadProgress,
     initWorker,
     generate,
     changeVoice,
@@ -104,6 +116,6 @@ export function useKokoro() {
     playSample,
     onChunk: (fn: (chunk: AudioChunk) => void) => { onChunkRef.current = fn; },
     onDone: (fn: (id: string) => void) => { onDoneRef.current = fn; },
-    onSample: (fn: (voice: string, audio: ArrayBuffer) => void) => { onSampleRef.current = fn; },
+    onSample: (fn: (voice: string, audio: Blob) => void) => { onSampleRef.current = fn; },
   };
 }
