@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Read(//usr/local/bin/**)",
+      "Bash(ls ~/.nvm/versions/node/*/bin/node)"
+    ],
+    "additionalDirectories": [
+      "/home/teedavid/Desktop/Projects/Voca/frontend/.git"
+    ]
+  }
+}

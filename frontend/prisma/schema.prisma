@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now())
+
+  books      Book[]
+  bookmarks  Bookmark[]
+  progress   ReadingProgress[]
+  audiobooks Audiobook[]
+  sessions   Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Book {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  author     String?
+  fileType   String
+  r2Key      String
+  fileSize   Int?
+  pageCount  Int?
+  coverColor String?
+  uploadedAt DateTime @default(now())
+
+  progress   ReadingProgress?
+  bookmarks  Bookmark[]
+  audiobooks Audiobook[]
+}
+
+model ReadingProgress {
+  id              String   @id @default(cuid())
+  bookId          String   @unique
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentPage     Int      @default(0)
+  currentPosition Float    @default(0)
+  lastReadAt      DateTime @default(now()) @updatedAt
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page      Int
+  text      String
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model Audiobook {
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  r2Key     String?
+  voice     String
+  speed     Float    @default(1.0)
+  status    String   @default("pending")
+  progress  Float    @default(0)
+  duration  Float?
+  createdAt DateTime @default(now())
+}
