@@ -10,12 +10,35 @@ const ALLOWED_TYPES: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
 };
 
+// Step 1: Get presigned URL (no DB record yet)
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { fileName, contentType, fileSize } = await req.json();
+  const body = await req.json();
+
+  // Step 2: Confirm upload — create the book record
+  if (body.confirm && body.r2Key) {
+    const { r2Key, fileName, fileType, fileSize } = body;
+    const title = (fileName ?? "Untitled").replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
+
+    const book = await db.book.create({
+      data: {
+        userId: session.user.id,
+        title,
+        fileType: fileType ?? "pdf",
+        r2Key,
+        fileSize: fileSize ?? null,
+        coverColor: randomCoverColor(),
+      },
+    });
+
+    return NextResponse.json({ bookId: book.id });
+  }
+
+  // Step 1: Just return presigned URL
+  const { fileName, contentType, fileSize } = body;
 
   if (!fileName || !contentType)
     return NextResponse.json({ error: "Missing fileName or contentType" }, { status: 400 });
@@ -27,23 +50,10 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
-  const title = fileName.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
   const r2Key = `pdfs/${session.user.id}/${Date.now()}-${fileName}`;
-
   const uploadUrl = await getUploadUrl(r2Key, contentType);
 
-  const book = await db.book.create({
-    data: {
-      userId: session.user.id,
-      title,
-      fileType,
-      r2Key,
-      fileSize: fileSize ?? null,
-      coverColor: randomCoverColor(),
-    },
-  });
-
-  return NextResponse.json({ uploadUrl, bookId: book.id, r2Key });
+  return NextResponse.json({ uploadUrl, r2Key, fileType });
 }
 
 const COVER_COLORS = [

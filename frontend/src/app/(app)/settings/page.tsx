@@ -196,6 +196,47 @@ function PreferencesSection() {
   const [speed, setSpeed] = useState(1.0);
   const [autoScroll, setAutoScroll] = useState(true);
   const [highlightWords, setHighlightWords] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/user/preferences")
+      .then((r) => r.json())
+      .then((prefs) => {
+        if (prefs.defaultVoice) setVoice(prefs.defaultVoice);
+        if (prefs.defaultSpeed != null) setSpeed(prefs.defaultSpeed);
+        if (prefs.autoScroll != null) setAutoScroll(prefs.autoScroll);
+        if (prefs.highlightWords != null) setHighlightWords(prefs.highlightWords);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    const res = await fetch("/api/user/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultVoice: voice, defaultSpeed: speed, autoScroll, highlightWords }),
+    });
+    if (res.ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+    setSaving(false);
+  }
+
+  if (!loaded) {
+    return (
+      <Card>
+        <SectionHeader icon={Sliders} title="Preferences" subtitle="Default reading and playback settings" />
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={24} className="animate-spin text-muted-foreground" />
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -247,8 +288,12 @@ function PreferencesSection() {
           ))}
         </div>
 
-        <button className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition">
-          Save Preferences
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition"
+        >
+          {saving ? <><Loader2 size={14} className="inline animate-spin mr-1.5" />Saving…</> : saved ? "Saved!" : "Save Preferences"}
         </button>
       </div>
     </Card>
@@ -475,7 +520,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Settings</h1>

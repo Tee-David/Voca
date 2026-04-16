@@ -1,9 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
+import { Bricolage_Grotesque, Outfit } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 
-const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-heading",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+});
+
+const outfit = Outfit({
+  variable: "--font-sans",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   title: "Voca — Read Anything, Listen Everywhere",
@@ -13,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6C63FF",
+  themeColor: "#4338CA",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -22,7 +32,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={geist.variable} suppressHydrationWarning>
+    <html lang="en" className={`${outfit.variable} ${bricolage.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>

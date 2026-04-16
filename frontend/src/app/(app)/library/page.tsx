@@ -2,9 +2,11 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   Upload, BookOpen, Search, MoreVertical, Star, Trash2,
-  FileText, File, Loader2, X, Heart, Filter,
+  FileText, File, Loader2, X, Heart, Clock, Headphones,
+  Bookmark, TrendingUp, Play, ArrowRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,14 @@ type Book = {
   progress: { percentComplete: number; currentPage: number; lastReadAt: string } | null;
 };
 
+type Stats = {
+  bookCount: number;
+  bookmarkCount: number;
+  audiobookCount: number;
+  totalMinutes: number;
+  recentBooks: Book[];
+};
+
 type Tab = "all" | "favorites" | "pdf" | "epub" | "txt" | "docx";
 
 const FILE_ICONS: Record<string, typeof FileText> = {
@@ -37,8 +47,10 @@ const ACCEPT = ".pdf,.epub,.txt,.docx,application/pdf,application/epub+zip,text/
 
 export default function LibraryPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const fileRef = useRef<HTMLInputElement>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -63,6 +75,10 @@ export default function LibraryPage() {
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
 
+  useEffect(() => {
+    fetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
+  }, []);
+
   async function uploadFile(file: File) {
     setUploading(true);
     setUploadProgress(0);
@@ -84,26 +100,37 @@ export default function LibraryPage() {
         return;
       }
 
-      const { uploadUrl } = await res.json();
-      setUploadProgress(30);
+      const { uploadUrl, r2Key, fileType } = await res.json();
+      setUploadProgress(20);
 
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
-          setUploadProgress(30 + (e.loaded / e.total) * 65);
+          setUploadProgress(20 + (e.loaded / e.total) * 60);
         }
       });
 
       await new Promise<void>((resolve, reject) => {
-        xhr.onload = () => (xhr.status < 400 ? resolve() : reject());
-        xhr.onerror = reject;
+        xhr.onload = () => (xhr.status < 400 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("Network error"));
         xhr.open("PUT", uploadUrl);
         xhr.setRequestHeader("Content-Type", file.type);
         xhr.send(file);
       });
 
+      setUploadProgress(85);
+
+      const confirmRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true, r2Key, fileName: file.name, fileType, fileSize: file.size }),
+      });
+
+      if (!confirmRes.ok) throw new Error("Failed to save book");
+
       setUploadProgress(100);
       await fetchBooks();
+      fetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
     } catch {
       alert("Upload failed. Please try again.");
     } finally {
@@ -149,6 +176,15 @@ export default function LibraryPage() {
     (b.author?.toLowerCase().includes(search.toLowerCase()) ?? false)
   );
 
+  const continueReading = books
+    .filter((b) => b.progress && b.progress.percentComplete > 0 && b.progress.percentComplete < 100)
+    .sort((a, b) => {
+      const aDate = a.progress?.lastReadAt ? new Date(a.progress.lastReadAt).getTime() : 0;
+      const bDate = b.progress?.lastReadAt ? new Date(b.progress.lastReadAt).getTime() : 0;
+      return bDate - aDate;
+    })
+    .slice(0, 4);
+
   const tabs: { key: Tab; label: string }[] = [
     { key: "all", label: "All" },
     { key: "favorites", label: "Favorites" },
@@ -158,25 +194,31 @@ export default function LibraryPage() {
     { key: "docx", label: "DOCX" },
   ];
 
+  const firstName = session?.user?.name?.split(" ")[0] || "there";
+
   return (
     <div
-      className="max-w-4xl mx-auto px-4 py-6"
+      className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6"
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      {/* ─── Hero / Welcome ─── */}
+      <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Bookshelf</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {books.length} {books.length === 1 ? "book" : "books"}
+          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+            Welcome back, {firstName}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {books.length === 0
+              ? "Upload your first book to get started"
+              : `You have ${books.length} ${books.length === 1 ? "book" : "books"} in your library`}
           </p>
         </div>
         <button
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition shadow-md shadow-primary/20"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition shadow-lg shadow-primary/25"
         >
           {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
           {uploading ? "Uploading…" : "Upload"}
@@ -184,7 +226,73 @@ export default function LibraryPage() {
         <input ref={fileRef} type="file" accept={ACCEPT} onChange={handleFileChange} className="hidden" />
       </div>
 
-      {/* Upload progress */}
+      {/* ─── Stats Cards ─── */}
+      {stats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+          {[
+            { icon: BookOpen, label: "Books", value: stats.bookCount, color: "text-primary bg-primary/10" },
+            { icon: Clock, label: "Minutes listened", value: stats.totalMinutes, color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" },
+            { icon: Bookmark, label: "Bookmarks", value: stats.bookmarkCount, color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" },
+            { icon: Headphones, label: "Audiobooks", value: stats.audiobookCount, color: "text-rose-600 bg-rose-50 dark:bg-rose-900/20" },
+          ].map(({ icon: Icon, label, value, color }) => (
+            <div key={label} className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
+              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", color)}>
+                <Icon size={18} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground leading-none">{value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ─── Continue Reading ─── */}
+      {continueReading.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-foreground">Continue Reading</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {continueReading.map((book) => (
+              <button
+                key={book.id}
+                onClick={() => router.push(`/reader/${book.id}`)}
+                className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-accent/50 transition text-left group"
+              >
+                <div
+                  className="w-12 h-16 rounded-lg overflow-hidden shrink-0 flex items-center justify-center"
+                  style={{ backgroundColor: book.coverColor || "#4338CA" }}
+                >
+                  {book.coverUrl ? (
+                    <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <FileText size={16} className="text-white/70" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground truncate">{book.title}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all"
+                        style={{ width: `${book.progress?.percentComplete ?? 0}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {Math.round(book.progress?.percentComplete ?? 0)}%
+                    </span>
+                  </div>
+                </div>
+                <Play size={16} className="text-muted-foreground group-hover:text-primary transition shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Upload progress ─── */}
       <AnimatePresence>
         {uploading && (
           <motion.div
@@ -210,41 +318,44 @@ export default function LibraryPage() {
         )}
       </AnimatePresence>
 
-      {/* Search + filter tabs */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search books…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-input bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      </div>
+      {/* ─── Library Section ─── */}
+      <div className="mb-4">
+        <h2 className="text-lg font-bold text-foreground mb-4">Your Library</h2>
 
-      {/* Tabs */}
-      <div className="flex gap-1.5 mb-6 overflow-x-auto scrollbar-hide pb-1">
-        {tabs.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition",
-              tab === key
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted/50 text-muted-foreground hover:bg-muted"
+        {/* Search + filter tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+          <div className="relative flex-1 max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search books…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-input bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X size={14} />
+              </button>
             )}
-          >
-            {label}
-          </button>
-        ))}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
+            {tabs.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition",
+                  tab === key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Drag overlay */}
@@ -274,24 +385,24 @@ export default function LibraryPage() {
 
       {/* Empty state */}
       {!loading && filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-            <BookOpen size={28} className="text-primary" />
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
+            <BookOpen size={32} className="text-primary" />
           </div>
-          <h3 className="text-base font-semibold text-foreground mb-1">
-            {search ? "No results" : "No books yet"}
+          <h3 className="text-lg font-bold text-foreground mb-1">
+            {search ? "No results" : "Your library is empty"}
           </h3>
-          <p className="text-sm text-muted-foreground max-w-xs">
+          <p className="text-sm text-muted-foreground max-w-sm">
             {search
               ? `Nothing matches "${search}"`
-              : "Upload a PDF, EPUB, TXT, or DOCX to start listening."}
+              : "Upload a PDF, EPUB, TXT, or DOCX file to start reading and listening."}
           </p>
           {!search && (
             <button
               onClick={() => fileRef.current?.click()}
-              className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition"
+              className="mt-6 flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition shadow-lg shadow-primary/25"
             >
-              <Upload size={15} />
+              <Upload size={16} />
               Upload your first book
             </button>
           )}
@@ -300,7 +411,7 @@ export default function LibraryPage() {
 
       {/* Book grid */}
       {!loading && filtered.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {filtered.map((book) => (
             <BookCard
               key={book.id}
@@ -312,6 +423,44 @@ export default function LibraryPage() {
               onOpen={() => router.push(`/reader/${book.id}`)}
             />
           ))}
+
+          {/* Upload more card */}
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="aspect-[3/4] rounded-xl border-2 border-dashed border-border hover:border-primary/40 flex flex-col items-center justify-center gap-2 transition group"
+          >
+            <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-primary/10 flex items-center justify-center transition">
+              <Upload size={18} className="text-muted-foreground group-hover:text-primary transition" />
+            </div>
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition">
+              Add book
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ─── Quick Tips (only if few books) ─── */}
+      {!loading && books.length > 0 && books.length <= 3 && (
+        <div className="mt-10 rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+            <TrendingUp size={15} className="text-primary" />
+            Getting Started
+          </h3>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[
+              { title: "Upload documents", desc: "Drag & drop PDF, EPUB, TXT, or DOCX files into your library" },
+              { title: "Listen with AI voices", desc: "Choose from 9 natural voices and adjust speed to your preference" },
+              { title: "Export audiobooks", desc: "Convert any document to an audiobook you can download and play anywhere" },
+            ].map(({ title, desc }) => (
+              <div key={title} className="flex gap-3">
+                <div className="w-1 rounded-full bg-primary/30 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -346,7 +495,7 @@ function BookCard({
       {/* Cover */}
       <button
         onClick={onOpen}
-        className="w-full aspect-[3/4] rounded-xl overflow-hidden relative shadow-md hover:shadow-lg transition-shadow"
+        className="w-full aspect-[3/4] rounded-xl overflow-hidden relative shadow-md hover:shadow-xl transition-shadow"
       >
         {book.coverUrl ? (
           <img
@@ -356,20 +505,20 @@ function BookCard({
           />
         ) : (
           <div
-            className="w-full h-full flex flex-col items-center justify-center p-4"
-            style={{ backgroundColor: book.coverColor || "#534AB7" }}
+            className="w-full h-full flex flex-col items-center justify-center p-3"
+            style={{ backgroundColor: book.coverColor || "#4338CA" }}
           >
-            <Icon size={32} className="text-white/80 mb-2" />
-            <p className="text-white/90 text-xs font-bold text-center leading-tight line-clamp-3">
+            <Icon size={28} className="text-white/80 mb-2" />
+            <p className="text-white/90 text-[11px] font-bold text-center leading-tight line-clamp-3">
               {book.title}
             </p>
-            <span className="text-white/50 text-[10px] mt-1 uppercase font-semibold">
+            <span className="text-white/50 text-[9px] mt-1.5 uppercase font-bold tracking-wider">
               {book.fileType}
             </span>
           </div>
         )}
 
-        {/* Progress bar at bottom */}
+        {/* Progress bar */}
         {percent > 0 && (
           <div className="absolute bottom-0 inset-x-0 h-1 bg-black/20">
             <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
@@ -379,13 +528,13 @@ function BookCard({
         {/* Favorite badge */}
         {book.isFavorite && (
           <div className="absolute top-2 right-2 bg-white/90 dark:bg-black/70 rounded-full p-1">
-            <Heart size={12} className="text-red-500 fill-red-500" />
+            <Heart size={10} className="text-red-500 fill-red-500" />
           </div>
         )}
 
         {/* Percent badge */}
         {percent > 0 && percent < 100 && (
-          <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+          <div className="absolute top-2 left-2 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
             {Math.round(percent)}%
           </div>
         )}
@@ -394,17 +543,17 @@ function BookCard({
       {/* Title + menu */}
       <div className="flex items-start justify-between mt-2 gap-1">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground truncate">{book.title}</p>
+          <p className="text-xs font-semibold text-foreground truncate">{book.title}</p>
           {book.author && (
-            <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{book.author}</p>
           )}
         </div>
         <div className="relative">
           <button
             onClick={onMenuToggle}
-            className="p-1 text-muted-foreground hover:text-foreground transition"
+            className="p-1 text-muted-foreground hover:text-foreground transition opacity-0 group-hover:opacity-100"
           >
-            <MoreVertical size={14} />
+            <MoreVertical size={12} />
           </button>
           <AnimatePresence>
             {menuOpen && (
@@ -412,20 +561,20 @@ function BookCard({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="absolute right-0 top-8 z-30 bg-background border border-border rounded-xl shadow-xl py-1 min-w-[140px]"
+                className="absolute right-0 top-8 z-30 bg-background border border-border rounded-xl shadow-xl py-1 min-w-[130px]"
               >
                 <button
                   onClick={onFavorite}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition"
                 >
-                  <Star size={14} className={book.isFavorite ? "text-amber-500 fill-amber-500" : ""} />
+                  <Star size={13} className={book.isFavorite ? "text-amber-500 fill-amber-500" : ""} />
                   {book.isFavorite ? "Unfavorite" : "Favorite"}
                 </button>
                 <button
                   onClick={onDelete}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition"
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={13} />
                   Delete
                 </button>
               </motion.div>
