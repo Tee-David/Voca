@@ -4,8 +4,11 @@ import { db } from "@/lib/db";
 import { r2 } from "@/lib/r2";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const session = await auth();
@@ -22,16 +25,21 @@ export async function GET(
 
   if (!book) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  const range = req.headers.get("range") ?? undefined;
+
   const cmd = new GetObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME!,
     Key: r2Key,
+    ...(range ? { Range: range } : {}),
   });
 
-  const obj = await r2.send(cmd);
-  if (!obj.Body) return NextResponse.json({ error: "File not found" }, { status: 404 });
-
-  const bytes = await obj.Body.transformToByteArray();
-  const buffer = Buffer.from(bytes);
+  let obj;
+  try {
+    obj = await r2.send(cmd);
+  } catch {
+    return NextResponse.json({ error: "File fetch failed" }, { status: 502 });
+  }
+  if (!obj.Body) return NextResponse.json({ error: "File empty" }, { status: 404 });
 
   const contentTypes: Record<string, string> = {
     pdf: "application/pdf",
@@ -40,10 +48,25 @@ export async function GET(
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   };
 
-  return new NextResponse(buffer, {
-    headers: {
-      "Content-Type": contentTypes[book.fileType] || "application/octet-stream",
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": contentTypes[book.fileType] || "application/octet-stream",
+    "Cache-Control": "private, max-age=3600",
+    "Accept-Ranges": "bytes",
+  };
+  if (obj.ContentLength != null) headers["Content-Length"] = String(obj.ContentLength);
+  if (obj.ContentRange) headers["Content-Range"] = obj.ContentRange;
+  if (obj.ETag) headers["ETag"] = obj.ETag;
+
+  // Stream body directly — no in-memory buffering (important for large PDFs on Vercel)
+  const stream = (obj.Body as { transformToWebStream?: () => ReadableStream }).transformToWebStream?.();
+  if (stream) {
+    return new NextResponse(stream, {
+      status: range ? 206 : 200,
+      headers,
+    });
+  }
+
+  // Fallback: buffer (only hit if transformToWebStream is unavailable)
+  const bytes = await (obj.Body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+  return new NextResponse(Buffer.from(bytes), { status: 200, headers });
 }

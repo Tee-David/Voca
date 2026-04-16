@@ -24,9 +24,13 @@ export async function GET(req: NextRequest) {
         ? { lastOpenedAt: "desc" as const }
         : { uploadedAt: "desc" as const };
 
+  const limitParam = url.searchParams.get("limit");
+  const take = limitParam ? parseInt(limitParam, 10) : undefined;
+
   const books = await db.book.findMany({
     where,
     orderBy,
+    ...(take && take > 0 ? { take } : {}),
     include: {
       progress: { select: { percentComplete: true, currentPage: true, lastReadAt: true } },
     },

@@ -1,55 +1,171 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Headphones, Play, Pause, SkipBack, SkipForward,
-  ChevronDown, ChevronUp, List, Loader2, BookOpen,
+  ChevronDown, ChevronUp, List, Loader2, BookOpen, Volume2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
+import { getCachedChapters } from "@/lib/bookCache";
+import { useKokoro } from "@/hooks/useKokoro";
+import { usePlayer } from "@/hooks/usePlayer";
+import { extractPdfCover, type Chapter } from "@/lib/extract";
 
 type Book = {
   id: string;
   title: string;
   author: string | null;
   fileType: string;
+  r2Key: string;
   coverColor: string | null;
   coverUrl: string | null;
 };
 
+type Preferences = {
+  defaultVoice: string;
+  defaultSpeed: number;
+  defaultPitch: number;
+};
+
+const SPEED_TICKS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
 export default function PlayerPage() {
-  const router = useRouter();
-  const [lastBook, setLastBook] = useState<Book | null>(null);
+  const [book, setBook] = useState<Book | null>(null);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapterIdx, setChapterIdx] = useState(0);
+  const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ttsLoading, setTtsLoading] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
-
-  // Simulated playback state (will be replaced by real TTS hook)
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [speed, setSpeed] = useState(1.0);
+  const initedRef = useRef(false);
 
+  const tts = useKokoro();
+  const player = usePlayer();
+
+  // Load: last opened book + prefs + cached chapters
   useEffect(() => {
-    async function fetchLastBook() {
+    let cancelled = false;
+    (async () => {
       try {
-        const res = await fetch("/api/library?sort=opened");
-        if (res.ok) {
-          const books: Book[] = await res.json();
-          if (books.length > 0) setLastBook(books[0]);
+        const [libRes, prefRes] = await Promise.all([
+          fetch("/api/library?sort=opened&limit=1"),
+          fetch("/api/user/preferences"),
+        ]);
+        if (!libRes.ok) return;
+        const books: Book[] = await libRes.json();
+        if (!books.length || cancelled) return;
+        const b = books[0];
+        setBook(b);
+
+        if (prefRes.ok) {
+          const p: Preferences = await prefRes.json();
+          setPrefs(p);
+          setSpeed(p.defaultSpeed || 1.0);
+        }
+
+        const cached = await getCachedChapters(b.id);
+        if (cached && !cancelled) setChapters(cached);
+
+        if (!b.coverUrl && b.fileType === "pdf") {
+          const url = `/api/files/${b.r2Key}`;
+          extractPdfCover(url).then((coverUrl) => {
+            if (coverUrl && !cancelled) {
+              setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
+              fetch(`/api/library/${b.id}/cover`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ coverUrl }),
+              }).catch(() => {});
+            }
+          });
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-    fetchLastBook();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-  function cycleSpeed() {
-    const idx = speeds.indexOf(speed);
-    setSpeed(speeds[(idx + 1) % speeds.length]);
-  }
+  // Wire TTS audio chunks into player queue
+  useEffect(() => {
+    tts.onChunk((chunk) => {
+      player.enqueueChunk(chunk.audio);
+    });
+    tts.onDone(() => {
+      setTtsLoading(false);
+    });
+  }, [tts, player]);
+
+  // Auto-advance to next chapter when player queue finishes
+  useEffect(() => {
+    if (!player.playing && player.currentTime > 0 && chapters.length > 0 && !ttsLoading) {
+      const next = chapterIdx + 1;
+      if (next < chapters.length) {
+        setChapterIdx(next);
+        startChapter(next);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player.playing]);
+
+  const chapter = chapters[chapterIdx];
+
+  const startChapter = async (idx: number) => {
+    const ch = chapters[idx];
+    if (!ch || !book) return;
+
+    if (!initedRef.current) {
+      tts.initWorker();
+      initedRef.current = true;
+    }
+    if (prefs?.defaultVoice) tts.changeVoice(prefs.defaultVoice as never);
+    tts.changeSpeed(speed);
+
+    player.resetQueue();
+    player.setMeta(book.id, book.title, ch.title);
+    setTtsLoading(true);
+    tts.generate(ch.text.slice(0, 4000), `${book.id}-ch${idx}`);
+  };
+
+  const togglePlay = async () => {
+    if (!chapter || !book) return;
+    if (player.playing) {
+      player.pause();
+      return;
+    }
+    // Resume if we have audio, otherwise start fresh
+    if (player.duration > 0) {
+      player.play();
+    } else {
+      await startChapter(chapterIdx);
+    }
+  };
+
+  const jumpChapter = async (idx: number) => {
+    if (idx < 0 || idx >= chapters.length) return;
+    player.stop();
+    setChapterIdx(idx);
+    await startChapter(idx);
+    setShowChapters(false);
+  };
+
+  const onSpeedChange = (v: number) => {
+    setSpeed(v);
+    tts.changeSpeed(v);
+  };
+
+  const pct = player.duration > 0
+    ? Math.min(100, (player.currentTime / player.duration) * 100)
+    : 0;
+  const timeFmt = (s: number) => {
+    if (!isFinite(s) || s <= 0) return "--:--";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
 
   if (loading) {
     return (
@@ -59,7 +175,7 @@ export default function PlayerPage() {
     );
   }
 
-  if (!lastBook) {
+  if (!book) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
         <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
@@ -81,76 +197,97 @@ export default function PlayerPage() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5rem)]">
-      {/* Main player view */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 overflow-y-auto">
 
-        {/* Book cover */}
-        <div className="w-56 h-72 sm:w-64 sm:h-80 rounded-2xl overflow-hidden shadow-2xl shadow-black/20 mb-8">
-          {lastBook.coverUrl ? (
-            <img src={lastBook.coverUrl} alt={lastBook.title} className="w-full h-full object-cover" />
+        <div className="w-56 h-72 sm:w-64 sm:h-80 rounded-2xl overflow-hidden shadow-2xl shadow-black/20 mb-8 relative">
+          {book.coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
           ) : (
             <div
               className="w-full h-full flex flex-col items-center justify-center p-6"
-              style={{ backgroundColor: lastBook.coverColor || "#534AB7" }}
+              style={{ backgroundColor: book.coverColor || "#534AB7" }}
             >
               <BookOpen size={48} className="text-white/70 mb-3" />
               <p className="text-white/90 text-sm font-bold text-center leading-tight line-clamp-3">
-                {lastBook.title}
+                {book.title}
               </p>
               <span className="text-white/50 text-xs mt-2 uppercase font-semibold">
-                {lastBook.fileType}
+                {book.fileType}
               </span>
+            </div>
+          )}
+          {(ttsLoading || tts.status === "loading") && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <Loader2 size={28} className="animate-spin text-white" />
             </div>
           )}
         </div>
 
-        {/* Title + author */}
-        <h2 className="text-xl font-bold text-foreground text-center mb-1">{lastBook.title}</h2>
-        {lastBook.author && (
-          <p className="text-sm text-muted-foreground text-center mb-1">{lastBook.author}</p>
+        <h2 className="text-xl font-bold text-foreground text-center mb-1 font-[var(--font-heading)]">
+          {book.title}
+        </h2>
+        {book.author && (
+          <p className="text-sm text-muted-foreground text-center mb-1">{book.author}</p>
         )}
-        <p className="text-xs text-muted-foreground mb-6">Chapter 1 — Page 1</p>
+        <p className="text-xs text-muted-foreground mb-6">
+          {chapter ? chapter.title : chapters.length === 0 ? "Open in reader to load chapters" : `Chapter ${chapterIdx + 1}`}
+        </p>
 
-        {/* Progress bar */}
-        <div className="w-full max-w-sm mb-6">
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+        <div className="w-full max-w-sm mb-4">
+          <div
+            className="h-1.5 rounded-full bg-muted overflow-hidden cursor-pointer"
+            onClick={(e) => {
+              if (!player.duration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const ratio = (e.clientX - rect.left) / rect.width;
+              player.seek(ratio * player.duration);
+            }}
+          >
+            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
           <div className="flex justify-between mt-1.5">
-            <span className="text-[10px] text-muted-foreground font-medium">0:00</span>
-            <span className="text-[10px] text-muted-foreground font-medium">--:--</span>
+            <span className="text-[10px] text-muted-foreground font-medium">{timeFmt(player.currentTime)}</span>
+            <span className="text-[10px] text-muted-foreground font-medium">{timeFmt(player.duration)}</span>
           </div>
         </div>
 
-        {/* Playback controls */}
-        <div className="flex items-center gap-6">
-          <button className="p-2 text-muted-foreground hover:text-foreground transition">
+        <div className="flex items-center gap-6 mb-5">
+          <button
+            onClick={() => jumpChapter(chapterIdx - 1)}
+            disabled={chapterIdx === 0 || chapters.length === 0}
+            className="p-2 text-muted-foreground hover:text-foreground transition disabled:opacity-30"
+          >
             <SkipBack size={24} />
           </button>
           <button
-            onClick={() => {
-              setPlaying(!playing);
-              if (!playing) router.push(`/reader/${lastBook.id}`);
-            }}
-            className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/30 hover:bg-primary/90 transition"
+            onClick={togglePlay}
+            disabled={chapters.length === 0}
+            className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/30 hover:bg-primary/90 transition disabled:opacity-40"
           >
-            {playing ? <Pause size={28} /> : <Play size={28} className="ml-1" />}
+            {player.playing ? <Pause size={28} /> : <Play size={28} className="ml-1" />}
           </button>
-          <button className="p-2 text-muted-foreground hover:text-foreground transition">
+          <button
+            onClick={() => jumpChapter(chapterIdx + 1)}
+            disabled={chapterIdx >= chapters.length - 1 || chapters.length === 0}
+            className="p-2 text-muted-foreground hover:text-foreground transition disabled:opacity-30"
+          >
             <SkipForward size={24} />
           </button>
         </div>
 
-        {/* Speed */}
-        <button
-          onClick={cycleSpeed}
-          className="mt-4 px-3 py-1 rounded-full bg-muted text-xs font-bold text-foreground hover:bg-muted/70 transition"
-        >
-          {speed}×
-        </button>
+        <SpeedSlider value={speed} onChange={onSpeedChange} />
+
+        {chapters.length === 0 && (
+          <Link
+            href={`/reader/${book.id}`}
+            className="mt-6 text-xs text-primary font-semibold hover:underline"
+          >
+            Open in Reader to load text →
+          </Link>
+        )}
       </div>
 
-      {/* Chapters toggle */}
       <div className="border-t border-border/50 bg-background">
         <button
           onClick={() => setShowChapters(!showChapters)}
@@ -158,7 +295,7 @@ export default function PlayerPage() {
         >
           <div className="flex items-center gap-2">
             <List size={16} />
-            Chapters
+            Chapters {chapters.length > 0 && <span className="text-muted-foreground font-normal">({chapters.length})</span>}
           </div>
           {showChapters ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </button>
@@ -170,20 +307,80 @@ export default function PlayerPage() {
               exit={{ height: 0 }}
               className="overflow-hidden"
             >
-              <div className="px-5 pb-4 space-y-1 max-h-48 overflow-y-auto">
-                <p className="text-xs text-muted-foreground py-3 text-center">
-                  Open the book in the reader to see chapters
-                </p>
-                <Link
-                  href={`/reader/${lastBook.id}`}
-                  className="block text-center text-sm text-primary font-semibold py-2"
-                >
-                  Open in Reader →
-                </Link>
+              <div className="px-3 pb-4 space-y-0.5 max-h-64 overflow-y-auto">
+                {chapters.length === 0 ? (
+                  <>
+                    <p className="text-xs text-muted-foreground py-3 text-center">
+                      Open the book in the reader to load chapters
+                    </p>
+                    <Link
+                      href={`/reader/${book.id}`}
+                      className="block text-center text-sm text-primary font-semibold py-2"
+                    >
+                      Open in Reader →
+                    </Link>
+                  </>
+                ) : (
+                  chapters.map((ch, i) => (
+                    <button
+                      key={i}
+                      onClick={() => jumpChapter(i)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition",
+                        i === chapterIdx
+                          ? "bg-primary/10 text-primary font-semibold"
+                          : "text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <span className="truncate pr-2">{i + 1}. {ch.title}</span>
+                      {i === chapterIdx && player.playing && <Volume2 size={14} className="shrink-0" />}
+                    </button>
+                  ))
+                )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function SpeedSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="w-full max-w-xs flex flex-col items-center gap-2">
+      <div className="flex items-baseline gap-1">
+        <span className="text-2xl font-bold text-foreground tabular-nums font-[var(--font-heading)]">
+          {value.toFixed(2)}
+        </span>
+        <span className="text-xs text-muted-foreground font-semibold">×</span>
+      </div>
+      <div className="relative w-full">
+        <input
+          type="range"
+          min={0.5}
+          max={2.0}
+          step={0.05}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="voca-speed-range w-full"
+        />
+        <div className="flex justify-between mt-1 px-1">
+          {SPEED_TICKS.map((t) => (
+            <button
+              key={t}
+              onClick={() => onChange(t)}
+              className={cn(
+                "text-[10px] font-semibold tabular-nums transition",
+                Math.abs(value - t) < 0.03
+                  ? "text-primary"
+                  : "text-muted-foreground/60 hover:text-foreground"
+              )}
+            >
+              {t}×
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

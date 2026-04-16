@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { extractText, extractPdfCover, type Chapter } from "@/lib/extract";
+import { cacheChapters, getCachedChapters } from "@/lib/bookCache";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
@@ -75,11 +76,17 @@ export default function ReaderPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const sleepRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pendingPlayRef = useRef(false);
 
   const tts = useKokoro();
   const player = usePlayer();
 
-  const togglePanel = (p: Panel) => setPanel((prev) => (prev === p ? null : p));
+  const togglePanel = (p: Panel) => {
+    setPanel((prev) => (prev === p ? null : p));
+    if (p === "voice" && (tts.status === "idle" || tts.status === "error")) {
+      tts.initWorker();
+    }
+  };
 
   const saveProgress = useCallback(
     async (page: number, total: number) => {
@@ -107,19 +114,28 @@ export default function ReaderPage() {
         setBook(data);
         if (data.bookmarks) setBookmarks(data.bookmarks);
 
-        setExtracting(true);
         const url = `/api/files/${data.r2Key}`;
-        const extracted = await extractText(url, data.fileType, (stage, value) =>
-          setExtractStage({ stage, value })
-        );
-        setChapters(extracted);
 
-        const startPage = data.progress?.currentPage ?? 0;
-        setCurrentChapter(Math.min(startPage, extracted.length - 1));
+        const cached = await getCachedChapters(data.id);
+        if (cached && cached.length > 0) {
+          setChapters(cached);
+          const startPage = data.progress?.currentPage ?? 0;
+          setCurrentChapter(Math.min(startPage, cached.length - 1));
+        } else {
+          setExtracting(true);
+          const extracted = await extractText(url, data.fileType, (stage, value) =>
+            setExtractStage({ stage, value })
+          );
+          setChapters(extracted);
+          await cacheChapters(data.id, extracted);
+          const startPage = data.progress?.currentPage ?? 0;
+          setCurrentChapter(Math.min(startPage, extracted.length - 1));
+        }
 
         if (!data.coverUrl && data.fileType === "pdf") {
           extractPdfCover(url).then((coverUrl) => {
             if (coverUrl) {
+              setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
               fetch(`/api/library/${data.id}/cover`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -182,6 +198,19 @@ export default function ReaderPage() {
     setCurrentSentence(-1);
   }
 
+  // Auto-start generation once TTS becomes ready after user requested play
+  useEffect(() => {
+    if (tts.status === "ready" && pendingPlayRef.current) {
+      pendingPlayRef.current = false;
+      const chapter = chapters[currentChapter];
+      if (chapter && book) {
+        player.resetQueue();
+        player.setMeta(book.id, book.title, chapter.title);
+        tts.generate(chapter.text, `${book.id}-ch${currentChapter}`);
+      }
+    }
+  }, [tts.status]);
+
   function handlePlay() {
     const chapter = chapters[currentChapter];
     if (!chapter || !book) return;
@@ -192,6 +221,7 @@ export default function ReaderPage() {
     }
 
     if (tts.status === "idle" || tts.status === "error") {
+      pendingPlayRef.current = true;
       tts.initWorker();
       return;
     }
@@ -379,15 +409,28 @@ export default function ReaderPage() {
               />
 
               <div className="mt-6">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Speed</label>
-                <div className="flex gap-2 flex-wrap">
-                  {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
+                  Speed — <span className="text-primary">{tts.speed.toFixed(2)}×</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  value={tts.speed}
+                  onChange={(e) => tts.changeSpeed(parseFloat(e.target.value))}
+                  className="voca-speed-range w-full"
+                />
+                <div className="flex justify-between mt-1.5 px-0.5">
+                  {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((s) => (
                     <button
                       key={s}
                       onClick={() => tts.changeSpeed(s)}
                       className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-semibold transition",
-                        tts.speed === s ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                        "text-[10px] font-semibold tabular-nums transition",
+                        Math.abs(tts.speed - s) < 0.03
+                          ? "text-primary"
+                          : "text-muted-foreground/60 hover:text-foreground"
                       )}
                     >
                       {s}×

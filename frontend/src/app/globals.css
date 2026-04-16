@@ -222,3 +222,41 @@
 .wave-bar:nth-child(6) { animation-delay: 0.3s; }
 .wave-bar:nth-child(7) { animation-delay: 0.2s; }
 .wave-bar:nth-child(8) { animation-delay: 0.1s; }
+
+/* Speed slider — custom range input */
+.voca-speed-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  outline: none;
+  cursor: pointer;
+}
+.voca-speed-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  border: 3px solid white;
+  cursor: grab;
+  transition: transform 0.1s;
+}
+.voca-speed-range::-webkit-slider-thumb:active { transform: scale(1.15); cursor: grabbing; }
+.voca-speed-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  border: 3px solid white;
+  cursor: grab;
+}
+.voca-speed-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+}
