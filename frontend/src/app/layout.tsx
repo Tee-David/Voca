@@ -33,7 +33,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${outfit.variable} ${bricolage.variable}`} suppressHydrationWarning>
-      <body className="min-h-dvh bg-background text-foreground">
+      <body className="min-h-dvh bg-background text-foreground" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>
