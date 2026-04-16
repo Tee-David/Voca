@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Outfit } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
+import { Preloader } from "@/components/Preloader";
 
 const bricolage = Bricolage_Grotesque({
   variable: "--font-heading",
@@ -34,7 +35,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${outfit.variable} ${bricolage.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh bg-background text-foreground" suppressHydrationWarning>
-        <Providers>{children}</Providers>
+        <Providers>
+          <Preloader />
+          {children}
+        </Providers>
       </body>
     </html>
   );

@@ -8,10 +8,10 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { getCachedChapters } from "@/lib/bookCache";
+import { getCachedChapters, cacheChapters } from "@/lib/bookCache";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
-import { extractPdfCover, type Chapter } from "@/lib/extract";
+import { extractText, extractPdfCover, type Chapter } from "@/lib/extract";
 
 type Book = {
   id: string;
@@ -67,7 +67,16 @@ export default function PlayerPage() {
         }
 
         const cached = await getCachedChapters(b.id);
-        if (cached && !cancelled) setChapters(cached);
+        if (cached && cached.length > 0 && !cancelled) {
+          setChapters(cached);
+        } else if (!cancelled) {
+          const url = `/api/files/${b.r2Key}`;
+          const extracted = await extractText(url, b.fileType);
+          if (!cancelled && extracted.length > 0) {
+            setChapters(extracted);
+            await cacheChapters(b.id, extracted);
+          }
+        }
 
         if (!b.coverUrl && b.fileType === "pdf") {
           const url = `/api/files/${b.r2Key}`;
