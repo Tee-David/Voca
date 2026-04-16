@@ -128,6 +128,79 @@
   }
 }
 
+/* GridMotion animated grid */
+.grid-motion-noscroll {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+.grid-motion-intro {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.grid-motion-container {
+  gap: 1rem;
+  flex: none;
+  position: relative;
+  width: 150vw;
+  height: 150vh;
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  grid-template-columns: 100%;
+  transform: rotate(30deg);
+  transform-origin: center center;
+  z-index: 2;
+}
+.grid-motion-row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(7, 1fr);
+  will-change: transform;
+}
+.grid-motion-row-item {
+  position: relative;
+}
+.grid-motion-row-item-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  background-color: #1a0a3c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.5rem;
+}
+.grid-motion-row-item-img {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: 50% 50%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.grid-motion-row-item-content {
+  padding: 1rem;
+  text-align: center;
+  z-index: 1;
+}
+.grid-motion-fullview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
 /* Waveform animation for player */
 @keyframes wave-bar {
   0%, 100% { transform: scaleY(0.3); }
