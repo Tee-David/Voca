@@ -1,21 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Allow ONNX runtime WebAssembly files for kokoro-js
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-      };
-    }
-    // Allow .wasm files
-    config.experiments = { ...config.experiments, asyncWebAssembly: true };
-    return config;
-  },
+  // Turbopack handles WASM natively (no webpack config needed)
+  turbopack: {},
 
-  // Headers for SharedArrayBuffer (needed for ONNX WASM threads)
+  // Required for kokoro-js (SharedArrayBuffer for ONNX WASM threads)
   async headers() {
     return [
       {
