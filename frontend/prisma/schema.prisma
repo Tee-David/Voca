@@ -7,20 +7,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── User ────────────────────────────────────────────────────────────────────
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   password  String
   name      String?
+  image     String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
-  books      Book[]
-  bookmarks  Bookmark[]
-  progress   ReadingProgress[]
-  audiobooks Audiobook[]
-  sessions   Session[]
+  books          Book[]
+  bookmarks      Bookmark[]
+  progress       ReadingProgress[]
+  audiobooks     Audiobook[]
+  sessions       Session[]
+  preferences    UserPreferences?
+  readingSessions ReadingSession[]
+  resetTokens    PasswordResetToken[]
+
+  @@index([createdAt])
 }
 
+// ─── Per-user preferences (voice, speed, theme, etc.) ────────────────────────
+model UserPreferences {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultVoice   String  @default("af_bella")
+  defaultSpeed   Float   @default(1.0)
+  defaultPitch   Float   @default(1.0)
+  stability      Float   @default(0.5)
+  autoScroll     Boolean @default(true)
+  highlightWords Boolean @default(true)
+  theme          String  @default("system") // "light" | "dark" | "system"
+  emailNotifs    Boolean @default(true)
+  updatedAt      DateTime @default(now()) @updatedAt
+}
+
+// ─── Auth sessions (NextAuth uses JWT; kept for optional DB sessions) ────────
 model Session {
   id        String   @id @default(cuid())
   userId    String
@@ -28,26 +53,56 @@ model Session {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
+// ─── Password reset tokens ───────────────────────────────────────────────────
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ─── Books (uploaded documents) ──────────────────────────────────────────────
 model Book {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title      String
-  author     String?
-  fileType   String
-  r2Key      String
-  fileSize   Int?
-  pageCount  Int?
-  coverColor String?
-  uploadedAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  author       String?
+  fileType     String   // "pdf" | "epub" | "txt" | "docx"
+  r2Key        String
+  fileSize     Int?
+  pageCount    Int?
+  wordCount    Int?
+  coverColor   String?
+  coverUrl     String?  // optional generated/fetched cover image
+  isFavorite   Boolean  @default(false)
+  archivedAt   DateTime?
+  uploadedAt   DateTime @default(now())
+  lastOpenedAt DateTime?
 
-  progress   ReadingProgress?
-  bookmarks  Bookmark[]
-  audiobooks Audiobook[]
+  progress        ReadingProgress?
+  bookmarks       Bookmark[]
+  audiobooks      Audiobook[]
+  readingSessions ReadingSession[]
+
+  @@index([userId, uploadedAt])
+  @@index([userId, lastOpenedAt])
+  @@index([userId, isFavorite])
+  @@index([userId, fileType])
 }
 
+// ─── Reading progress per book ───────────────────────────────────────────────
 model ReadingProgress {
   id              String   @id @default(cuid())
   bookId          String   @unique
@@ -56,9 +111,15 @@ model ReadingProgress {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   currentPage     Int      @default(0)
   currentPosition Float    @default(0)
+  percentComplete Float    @default(0) // 0..100 for quick library-grid render
+  totalTimeSec    Int      @default(0) // cumulative listening seconds
   lastReadAt      DateTime @default(now()) @updatedAt
+
+  @@index([userId, lastReadAt])
+  @@index([userId, percentComplete])
 }
 
+// ─── Bookmarks (highlights + notes) ──────────────────────────────────────────
 model Bookmark {
   id        String   @id @default(cuid())
   bookId    String
@@ -68,9 +129,14 @@ model Bookmark {
   page      Int
   text      String
   note      String?
+  color     String?  // "yellow" | "purple" | "green" | "pink"
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([bookId, page])
 }
 
+// ─── Audiobook exports ───────────────────────────────────────────────────────
 model Audiobook {
   id        String   @id @default(cuid())
   bookId    String
@@ -80,8 +146,30 @@ model Audiobook {
   r2Key     String?
   voice     String
   speed     Float    @default(1.0)
-  status    String   @default("pending")
+  status    String   @default("pending") // pending | generating | complete | failed
   progress  Float    @default(0)
   duration  Float?
+  fileSize  Int?
   createdAt DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// ─── Reading sessions (for streaks + listening stats) ────────────────────────
+model ReadingSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId     String?
+  book       Book?    @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  startedAt  DateTime @default(now())
+  endedAt    DateTime?
+  durationSec Int     @default(0)
+  wordsRead  Int      @default(0)
+
+  @@index([userId, startedAt])
+  @@index([bookId])
 }
