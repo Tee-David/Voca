@@ -61,6 +61,7 @@ export default function ReaderPage() {
   const [currentChapter, setCurrentChapter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
+  const [extractStage, setExtractStage] = useState<{ stage: string; value: number } | null>(null);
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<Panel>(null);
   const [fontSize, setFontSize] = useState(18);
@@ -108,7 +109,9 @@ export default function ReaderPage() {
 
         setExtracting(true);
         const url = `/api/files/${data.r2Key}`;
-        const extracted = await extractText(url, data.fileType);
+        const extracted = await extractText(url, data.fileType, (stage, value) =>
+          setExtractStage({ stage, value })
+        );
         setChapters(extracted);
 
         const startPage = data.progress?.currentPage ?? 0;
@@ -646,7 +649,21 @@ export default function ReaderPage() {
           {extracting ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 size={24} className="animate-spin text-primary mb-3" />
-              <p className="text-sm text-muted-foreground">Extracting text…</p>
+              <p className="text-sm text-muted-foreground">
+                {extractStage?.stage === "ocr"
+                  ? `Running OCR on scanned pages… ${extractStage.value}%`
+                  : extractStage?.stage === "extract"
+                  ? `Extracting text… ${extractStage.value}%`
+                  : "Extracting text…"}
+              </p>
+              {extractStage && (
+                <div className="mt-3 w-48 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${extractStage.value}%` }}
+                  />
+                </div>
+              )}
             </div>
           ) : chapter ? (
             <article className="max-w-prose mx-auto">

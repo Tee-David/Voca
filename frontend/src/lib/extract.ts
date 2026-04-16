@@ -9,13 +9,16 @@ export type Chapter = {
   text: string;
 };
 
+export type ExtractProgress = (stage: string, value: number) => void;
+
 export async function extractText(
   url: string,
-  fileType: string
+  fileType: string,
+  onProgress?: ExtractProgress
 ): Promise<Chapter[]> {
   switch (fileType) {
     case "pdf":
-      return extractPdf(url);
+      return extractPdf(url, onProgress);
     case "epub":
       return extractEpub(url);
     case "txt":
@@ -62,17 +65,20 @@ type OutlineItem = {
   items?: OutlineItem[];
 };
 
-async function extractPdf(url: string): Promise<Chapter[]> {
+async function extractPdf(
+  url: string,
+  onProgress?: (stage: string, value: number) => void
+): Promise<Chapter[]> {
   const pdfjsLib = await import("pdfjs-dist");
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
   const pdf = await pdfjsLib.getDocument(url).promise;
 
-  // Try to get the document outline (TOC) for real chapters
   const outline = (await pdf.getOutline()) as OutlineItem[] | null;
 
-  // Extract text from all pages
   const pageTexts: string[] = [];
+  const emptyPageIndices: number[] = [];
+  const OCR_THRESHOLD = 20;
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
@@ -81,6 +87,13 @@ async function extractPdf(url: string): Promise<Chapter[]> {
       .join(" ")
       .trim();
     pageTexts.push(text);
+    if (text.length < OCR_THRESHOLD) emptyPageIndices.push(i - 1);
+    onProgress?.("extract", Math.round((i / pdf.numPages) * 100));
+  }
+
+  const scannedRatio = emptyPageIndices.length / pdf.numPages;
+  if (scannedRatio > 0.3 && emptyPageIndices.length > 0) {
+    await runOcrOnPages(pdf, emptyPageIndices, pageTexts, onProgress);
   }
 
   // If we have an outline, use it for chapter boundaries
@@ -95,6 +108,45 @@ async function extractPdf(url: string): Promise<Chapter[]> {
 
   // Final fallback: group every ~5 pages
   return groupPages(pageTexts, 5);
+}
+
+async function runOcrOnPages(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pdf: any,
+  pageIndices: number[],
+  pageTexts: string[],
+  onProgress?: (stage: string, value: number) => void
+): Promise<void> {
+  try {
+    const { createWorker } = await import("tesseract.js");
+    const worker = await createWorker("eng");
+
+    for (let i = 0; i < pageIndices.length; i++) {
+      const pageIdx = pageIndices[i];
+      try {
+        const page = await pdf.getPage(pageIdx + 1);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+        const { data } = await worker.recognize(canvas);
+        if (data.text?.trim()) {
+          pageTexts[pageIdx] = data.text.trim();
+        }
+      } catch {
+        // skip page on failure
+      }
+      onProgress?.("ocr", Math.round(((i + 1) / pageIndices.length) * 100));
+    }
+
+    await worker.terminate();
+  } catch {
+    // tesseract.js unavailable \u2014 leave pages empty
+  }
 }
 
 type ChapterPage = { title: string; pageIndex: number };
