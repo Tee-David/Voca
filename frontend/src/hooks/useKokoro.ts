@@ -26,11 +26,33 @@ export const KOKORO_VOICES = [
 
 export type VoiceId = (typeof KOKORO_VOICES)[number]["id"];
 
+const DEFAULT_VOICE_KEY = "voca:default:voice";
+const DEFAULT_SPEED_KEY = "voca:default:speed";
+
+function readDefaultVoice(): VoiceId {
+  if (typeof window === "undefined") return "af_bella";
+  try {
+    const v = localStorage.getItem(DEFAULT_VOICE_KEY);
+    if (v && KOKORO_VOICES.some((kv) => kv.id === v)) return v as VoiceId;
+  } catch { /* ignore */ }
+  return "af_bella";
+}
+
+function readDefaultSpeed(): number {
+  if (typeof window === "undefined") return 1.0;
+  try {
+    const s = parseFloat(localStorage.getItem(DEFAULT_SPEED_KEY) || "");
+    if (Number.isFinite(s) && s >= 0.5 && s <= 2.0) return s;
+  } catch { /* ignore */ }
+  return 1.0;
+}
+
 export function useKokoro() {
   const workerRef = useRef<Worker | null>(null);
   const [status, setStatus] = useState<TTSStatus>("idle");
-  const [voice, setVoice] = useState<VoiceId>("af_bella");
-  const [speed, setSpeed] = useState(1.0);
+  const [voice, setVoice] = useState<VoiceId>(readDefaultVoice);
+  const [speed, setSpeed] = useState<number>(readDefaultSpeed);
+  const [defaultVoice, setDefaultVoiceState] = useState<VoiceId>(readDefaultVoice);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const onChunkRef = useRef<((chunk: AudioChunk) => void) | null>(null);
   const onDoneRef = useRef<((id: string) => void) | null>(null);
@@ -104,16 +126,26 @@ export function useKokoro() {
     [initWorker]
   );
 
+  const setAsDefault = useCallback((v: VoiceId, s: number) => {
+    try {
+      localStorage.setItem(DEFAULT_VOICE_KEY, v);
+      localStorage.setItem(DEFAULT_SPEED_KEY, String(s));
+    } catch { /* ignore */ }
+    setDefaultVoiceState(v);
+  }, []);
+
   return {
     status,
     voice,
     speed,
+    defaultVoice,
     downloadProgress,
     initWorker,
     generate,
     changeVoice,
     changeSpeed,
     playSample,
+    setAsDefault,
     onChunk: (fn: (chunk: AudioChunk) => void) => { onChunkRef.current = fn; },
     onDone: (fn: (id: string) => void) => { onDoneRef.current = fn; },
     onSample: (fn: (voice: string, audio: Blob) => void) => { onSampleRef.current = fn; },

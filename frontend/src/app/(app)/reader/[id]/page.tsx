@@ -109,6 +109,8 @@ export default function ReaderPage() {
   const [cachedChaptersSet, setCachedChaptersSet] = useState<Set<number>>(new Set());
   const [ocrSuggest, setOcrSuggest] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [missingSource, setMissingSource] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [downloadState, setDownloadState] = useState<{ active: boolean; chapterIdx: number; total: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pronunciations, setPronunciations] = useState<Pronunciation[]>([]);
@@ -192,12 +194,15 @@ export default function ReaderPage() {
           }
         } catch (extractErr) {
           console.error("Extract failed:", extractErr);
+          const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+          const missing = /\b(404|nosuchkey|key does not exist|source .* missing)\b/i.test(msg);
+          setMissingSource(missing);
           setError(
-            extractErr instanceof Error
-              ? `Text extraction failed: ${extractErr.message}`
-              : "Text extraction failed"
+            missing
+              ? "The PDF file for this book is missing on the server — the upload may have failed. You can remove this entry and re-upload."
+              : `Text extraction failed: ${msg}`
           );
-          if (data.fileType === "pdf" && data.ocrStatus !== "done" && data.ocrStatus !== "processing") {
+          if (!missing && data.fileType === "pdf" && data.ocrStatus !== "done" && data.ocrStatus !== "processing") {
             setOcrSuggest(true);
           }
         } finally {
@@ -240,19 +245,40 @@ export default function ReaderPage() {
         body: JSON.stringify({ language: "eng" }),
       });
       if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        throw new Error(msg || `OCR failed (${res.status})`);
+        let msg = `OCR failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) msg = text;
+        }
+        throw new Error(msg);
       }
-      // Clear cached chapters so next load re-extracts from searchable PDF
-      try {
-        await cacheChapters(book.id, []);
-      } catch { /* ignore */ }
+      try { await cacheChapters(book.id, []); } catch { /* ignore */ }
       window.location.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "OCR failed");
+      const msg = err instanceof Error ? err.message : "OCR failed";
+      const missing = /\b(404|nosuchkey|key does not exist|source .* missing)\b/i.test(msg);
+      setMissingSource(missing);
+      setError(
+        missing
+          ? "The PDF file for this book is missing on the server — the upload may have failed. You can remove this entry and re-upload."
+          : msg
+      );
       setOcrBusy(false);
     }
   }, [book, ocrBusy]);
+
+  const deleteBook = useCallback(async () => {
+    if (!book || deleting) return;
+    if (!confirm(`Remove "${book.title}" from your library? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/library/${book.id}`, { method: "DELETE" });
+    } catch { /* ignore */ }
+    router.push("/library");
+  }, [book, deleting, router]);
 
   useEffect(() => {
     if (chapters.length > 0) saveProgress(currentChapter, chapters.length);
@@ -603,9 +629,15 @@ export default function ReaderPage() {
   }
 
   if (!book) {
+    const bookNotFound = error === "Book not found" || /not found/i.test(error);
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
         <p className="text-destructive font-medium mb-2">{error || "Book not found"}</p>
+        {bookNotFound && (
+          <p className="text-xs text-muted-foreground mb-4 max-w-xs">
+            This book may have already been removed.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground mb-6 max-w-xs">
           {error && !error.toLowerCase().includes("not found") && "The file may be too large or corrupt. Try again in a moment."}
         </p>
@@ -747,9 +779,25 @@ export default function ReaderPage() {
               <h3 className={cn("font-bold", themeStyle.text)}>Voice & Speed</h3>
               <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
-            <VoiceSelector selectedVoice={tts.voice} ttsStatus={tts.status} onSelect={(v) => tts.changeVoice(v)} onSample={(v) => tts.playSample(v)} onSampleReady={tts.onSample} />
+            <VoiceSelector
+              selectedVoice={tts.voice}
+              defaultVoice={tts.defaultVoice}
+              ttsStatus={tts.status}
+              onSelect={(v) => tts.changeVoice(v)}
+              onSetDefault={(v) => tts.setAsDefault(v, tts.speed)}
+              onSample={(v) => tts.playSample(v)}
+              onSampleReady={tts.onSample}
+            />
             <div className="mt-6">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Speed — <span className="text-primary">{tts.speed.toFixed(2)}×</span></label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Speed — <span className="text-primary">{tts.speed.toFixed(2)}×</span></label>
+                <button
+                  onClick={() => tts.setAsDefault(tts.voice, tts.speed)}
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                >
+                  Save as default
+                </button>
+              </div>
               <input type="range" min={0.5} max={2.0} step={0.05} value={tts.speed} onChange={(e) => tts.changeSpeed(parseFloat(e.target.value))} className="voca-speed-range w-full" />
             </div>
             {book && chapters.length > 0 && <AudiobookExport bookId={book.id} bookTitle={book.title} chapters={chapters} voice={tts.voice} speed={tts.speed} />}
@@ -1080,16 +1128,27 @@ export default function ReaderPage() {
               <p className={cn("font-semibold", themeStyle.text)}>Couldn&apos;t open this book</p>
               <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
               <div className="flex gap-2 mt-2 flex-wrap justify-center">
-                <button onClick={loadBook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
-                  Retry
-                </button>
-                {ocrSuggest && book?.fileType === "pdf" && (
+                {!missingSource && (
+                  <button onClick={loadBook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
+                    Retry
+                  </button>
+                )}
+                {!missingSource && ocrSuggest && book?.fileType === "pdf" && (
                   <button
                     onClick={runOcr}
                     disabled={ocrBusy}
                     className="px-4 py-2 rounded-lg bg-primary/15 text-primary text-sm font-semibold disabled:opacity-60"
                   >
                     {ocrBusy ? "Running OCR…" : "Run OCR"}
+                  </button>
+                )}
+                {missingSource && (
+                  <button
+                    onClick={deleteBook}
+                    disabled={deleting}
+                    className="px-4 py-2 rounded-lg bg-destructive text-white text-sm font-semibold disabled:opacity-60"
+                  >
+                    {deleting ? "Removing…" : "Remove book"}
                   </button>
                 )}
                 <button onClick={() => router.push("/library")} className="px-4 py-2 rounded-lg bg-muted text-foreground text-sm font-semibold">

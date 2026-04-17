@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Check, Volume2, Loader2 } from "lucide-react";
+import { Play, Pause, Check, Volume2, Loader2, Pin, PinOff } from "lucide-react";
 import { KOKORO_VOICES, type VoiceId, type TTSStatus } from "@/hooks/useKokoro";
 import { cn } from "@/lib/utils";
 
 interface VoiceSelectorProps {
   selectedVoice: VoiceId;
+  defaultVoice?: VoiceId;
   ttsStatus: TTSStatus;
   onSelect: (voice: VoiceId) => void;
+  onSetDefault?: (voice: VoiceId) => void;
   onSample: (voiceId: string) => void;
   onSampleReady: (cb: (voice: string, audio: Blob) => void) => void;
 }
@@ -20,8 +22,10 @@ const GENDER_COLORS: Record<string, string> = {
 
 export function VoiceSelector({
   selectedVoice,
+  defaultVoice,
   ttsStatus,
   onSelect,
+  onSetDefault,
   onSample,
   onSampleReady,
 }: VoiceSelectorProps) {
@@ -76,6 +80,7 @@ export function VoiceSelector({
       <div className="grid grid-cols-1 gap-1.5">
         {KOKORO_VOICES.map((v) => {
           const selected = selectedVoice === v.id;
+          const isDefault = defaultVoice === v.id;
           const isPlaying = playingVoice === v.id;
           const isLoading = loadingVoice === v.id;
 
@@ -102,14 +107,38 @@ export function VoiceSelector({
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-sm font-semibold text-foreground">{v.name}</span>
                   {selected && <Check size={14} className="text-primary" />}
+                  {isDefault && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                      <Pin size={9} /> Default
+                    </span>
+                  )}
                 </div>
                 <span className="text-[10px] text-muted-foreground">
                   {v.accent} · {v.gender === "F" ? "Female" : "Male"}
                 </span>
               </div>
+
+              {/* Set default button */}
+              {onSetDefault && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetDefault(v.id);
+                  }}
+                  title={isDefault ? "Current default" : "Set as default"}
+                  className={cn(
+                    "p-2 rounded-lg transition shrink-0",
+                    isDefault
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-primary hover:bg-muted"
+                  )}
+                >
+                  {isDefault ? <Pin size={14} /> : <PinOff size={14} />}
+                </button>
+              )}
 
               {/* Sample button */}
               <button
