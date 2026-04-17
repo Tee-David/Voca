@@ -28,6 +28,7 @@ import { AudiobookExport } from "@/components/reader/AudiobookExport";
 import { PlayerPill } from "@/components/reader/PlayerPill";
 import { TitleActionCard } from "@/components/reader/TitleActionCard";
 import { AiRail, type AiAction } from "@/components/reader/AiRail";
+import { WordPopover } from "@/components/reader/WordPopover";
 import { SheetStackProvider, useSheetStack } from "@/components/ui/sheet-stack";
 import { cn } from "@/lib/utils";
 
@@ -146,6 +147,8 @@ function ReaderPageInner() {
   const [highlightSentence, setHighlightSentence] = useState(true);
   const [autoHidePlayer, setAutoHidePlayer] = useState(true);
   const [autoPlayAudio, setAutoPlayAudio] = useState(false);
+  const [wordPopover, setWordPopover] = useState<{ word: string; sentence: string; anchor: { x: number; y: number } } | null>(null);
+  const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const tts = useKokoro();
   const player = usePlayer();
@@ -676,6 +679,34 @@ function ReaderPageInner() {
         genCollectorRef.current.sentences.push(chunk.sentence);
       }
     });
+  }
+
+  function handleSentenceClickOrWord(e: React.MouseEvent, sentenceIdx: number, sentenceText: string) {
+    e.stopPropagation();
+    type CaretRangeFn = (x: number, y: number) => Range | null;
+    type CaretPosFn = (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    const doc = document as Document & { caretRangeFromPoint?: CaretRangeFn; caretPositionFromPoint?: CaretPosFn };
+    let node: Node | null = null;
+    let offset = 0;
+    if (typeof doc.caretRangeFromPoint === "function") {
+      const r = doc.caretRangeFromPoint(e.clientX, e.clientY);
+      if (r) { node = r.startContainer; offset = r.startOffset; }
+    } else if (typeof doc.caretPositionFromPoint === "function") {
+      const p = doc.caretPositionFromPoint(e.clientX, e.clientY);
+      if (p) { node = p.offsetNode; offset = p.offset; }
+    }
+    if (node && node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? "";
+      let s = offset, eo = offset;
+      while (s > 0 && /[\w'-]/.test(text[s - 1])) s--;
+      while (eo < text.length && /[\w'-]/.test(text[eo])) eo++;
+      const word = text.slice(s, eo).trim();
+      if (word && word.length >= 2) {
+        setWordPopover({ word, sentence: sentenceText, anchor: { x: e.clientX, y: e.clientY } });
+        return;
+      }
+    }
+    handleSentenceClick(sentenceIdx);
   }
 
   function handleSentenceClick(sentenceIdx: number) {
@@ -1477,7 +1508,7 @@ function ReaderPageInner() {
                       <span
                         key={sIdx}
                         data-sentence={sIdx}
-                        onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }}
+                        onClick={(e) => handleSentenceClickOrWord(e, sIdx, sentence)}
                         className="cursor-pointer rounded transition-colors duration-200 text-primary"
                       >
                         {words.map((part, pIdx) => {
@@ -1501,7 +1532,7 @@ function ReaderPageInner() {
                     <span
                       key={sIdx}
                       data-sentence={sIdx}
-                      onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }}
+                      onClick={(e) => handleSentenceClickOrWord(e, sIdx, sentence)}
                       className={cn(
                         "transition-colors duration-200 cursor-pointer rounded",
                         isActiveSentence ? "text-primary" : themeStyle.text,
@@ -1648,6 +1679,54 @@ function ReaderPageInner() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── Word popover (Phase 4) ─── */}
+      <WordPopover
+        open={!!wordPopover}
+        word={wordPopover?.word ?? ""}
+        sentence={wordPopover?.sentence ?? ""}
+        anchor={wordPopover?.anchor ?? null}
+        theme={theme}
+        onClose={() => setWordPopover(null)}
+        onHear={(text) => {
+          if (tts.status === "idle" || tts.status === "error") { tts.initWorker(); return; }
+          if (!sampleAudioRef.current) sampleAudioRef.current = new Audio();
+          tts.onSample((_v, blob) => {
+            const audio = sampleAudioRef.current;
+            if (!audio) return;
+            audio.src = URL.createObjectURL(blob);
+            audio.play().catch(() => {});
+          });
+          tts.playSample(tts.voice, text);
+        }}
+        onFixPronunciation={(w) => {
+          setNewPronFrom(w);
+          setNewPronTo("");
+          setPanel("pronunciations");
+        }}
+        onCopy={(text) => {
+          if (typeof navigator !== "undefined" && navigator.clipboard) {
+            navigator.clipboard.writeText(text).catch(() => {});
+          }
+          setWordPopover(null);
+        }}
+        onHighlight={(snippet) => {
+          if (!book) return;
+          fetch("/api/bookmarks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              bookId: book.id,
+              page: currentChapter,
+              text: snippet.slice(0, 200),
+              color: cursorColor,
+            }),
+          })
+            .then((r) => r.ok ? r.json() : null)
+            .then((bm) => { if (bm) setBookmarks((prev) => [bm, ...prev]); })
+            .catch(() => {});
+        }}
+      />
     </div>
   );
 }

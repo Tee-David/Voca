@@ -105,16 +105,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped / deferre
 
 ## Phase 4 — Word popover (mid-reading pronunciation fix)
 
-- [ ] New component [components/reader/WordPopover.tsx](frontend/src/components/reader/WordPopover.tsx)
-- [ ] Triggered by tap on any word in reader content
-- [ ] Positions near tap; small pill + chevron
-- [ ] Actions:
-  - [ ] **Hear it** — one-shot Kokoro preview
-  - [ ] **Fix pronunciation** — prefills Pronunciations sheet with word, opens it
-  - [ ] **Define** — Wiktionary REST API lookup, no key
-  - [ ] **Copy**
-  - [ ] **Highlight** — creates bookmark with word as snippet
-- [ ] Dismiss on outside click / scroll
+- [x] New component [components/reader/WordPopover.tsx](frontend/src/components/reader/WordPopover.tsx)
+- [x] Triggered by tap on any word in reader content (caretRangeFromPoint detects word boundary; falls back to sentence seek if tap lands on whitespace/punctuation)
+- [x] Positions near tap with viewport-aware placement (above/below)
+- [x] Actions:
+  - [x] **Hear it** — one-shot Kokoro preview (auto-rebinds onSample handler)
+  - [x] **Fix pronunciation** — prefills Pronunciations sheet `from` field, opens it
+  - [x] **Define** — Wiktionary REST API lookup, no key
+  - [x] **Copy** — navigator.clipboard.writeText
+  - [x] **Highlight** — creates bookmark with sentence snippet + cursor color
+- [x] Dismiss on outside click / scroll / Escape
 
 ## Phase 5 — Library redesign
 
