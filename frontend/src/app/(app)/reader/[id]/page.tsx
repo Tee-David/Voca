@@ -322,13 +322,17 @@ function ReaderPageInner() {
   }, [id]);
 
   useEffect(() => { 
-    loadBook().then(() => {
-      // Prewarm TTS worker (Phase 12a)
-      if (tts.status === "idle") {
-        tts.initWorker();
-      }
-    }); 
-  }, [loadBook, tts]);
+    loadBook(); 
+  }, [loadBook]);
+
+  // Prewarm TTS worker once on mount (Phase 12a)
+  const ttsInitDone = useRef(false);
+  useEffect(() => {
+    if (!ttsInitDone.current && tts.status === "idle" && !loading && book) {
+      ttsInitDone.current = true;
+      tts.initWorker();
+    }
+  }, [tts.status, loading, book]);
 
   const runOcr = useCallback(async () => {
     if (!book || ocrBusy) return;
