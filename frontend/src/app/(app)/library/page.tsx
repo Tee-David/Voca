@@ -6,7 +6,8 @@ import { useSession } from "next-auth/react";
 import {
   Upload, BookOpen, Search, MoreVertical, Star, Trash2,
   FileText, File, Loader2, X, Heart, Clock, Headphones,
-  Bookmark, TrendingUp, Play, ArrowRight,
+  Bookmark, TrendingUp, Play,
+  LayoutGrid, List as ListIcon, Pencil, ScanText,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,9 @@ type Stats = {
 };
 
 type Tab = "all" | "favorites" | "pdf" | "epub" | "txt" | "docx";
+type ViewMode = "grid" | "list";
+
+const VIEW_MODE_KEY = "voca:library:view";
 
 const FILE_ICONS: Record<string, typeof FileText> = {
   pdf: FileText,
@@ -58,6 +62,19 @@ export default function LibraryPage() {
   const [tab, setTab] = useState<Tab>("all");
   const [menuBookId, setMenuBookId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(VIEW_MODE_KEY) as ViewMode | null;
+      if (saved === "grid" || saved === "list") setViewMode(saved);
+    } catch { /* ignore */ }
+  }, []);
+
+  const setView = (m: ViewMode) => {
+    setViewMode(m);
+    try { localStorage.setItem(VIEW_MODE_KEY, m); } catch { /* ignore */ }
+  };
 
   const fetchBooks = useCallback(async () => {
     try {
@@ -74,6 +91,17 @@ export default function LibraryPage() {
   }, [tab]);
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
+
+  useEffect(() => {
+    if (!menuBookId) return;
+    const close = () => setMenuBookId(null);
+    // defer by a tick so the toggle click itself doesn't immediately close the menu
+    const t = setTimeout(() => document.addEventListener("click", close), 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("click", close);
+    };
+  }, [menuBookId]);
 
   useEffect(() => {
     fetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
@@ -169,6 +197,34 @@ export default function LibraryPage() {
     await fetch(`/api/library/${bookId}`, { method: "DELETE" });
     setBooks((prev) => prev.filter((b) => b.id !== bookId));
     setMenuBookId(null);
+  }
+
+  async function renameBook(bookId: string, currentTitle: string) {
+    const next = window.prompt("Rename book", currentTitle)?.trim();
+    setMenuBookId(null);
+    if (!next || next === currentTitle) return;
+    const res = await fetch(`/api/library/${bookId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: next }),
+    });
+    if (!res.ok) return alert("Rename failed");
+    setBooks((prev) => prev.map((b) => (b.id === bookId ? { ...b, title: next } : b)));
+  }
+
+  async function runOcrFor(bookId: string) {
+    setMenuBookId(null);
+    if (!confirm("Run OCR on this PDF? This can take a few minutes.")) return;
+    const res = await fetch(`/api/library/${bookId}/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: "eng" }),
+    });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      return alert(`OCR failed: ${msg || res.status}`);
+    }
+    await fetchBooks();
   }
 
   const filtered = books.filter((b) =>
@@ -342,21 +398,45 @@ export default function LibraryPage() {
               </button>
             )}
           </div>
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
-            {tabs.map(({ key, label }) => (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1 flex-1 min-w-0">
+              {tabs.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition",
+                    tab === key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="shrink-0 flex items-center rounded-full bg-muted/50 p-0.5">
               <button
-                key={key}
-                onClick={() => setTab(key)}
+                aria-label="Grid view"
+                onClick={() => setView("grid")}
                 className={cn(
-                  "px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition",
-                  tab === key
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  "p-1.5 rounded-full transition",
+                  viewMode === "grid" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {label}
+                <LayoutGrid size={14} />
               </button>
-            ))}
+              <button
+                aria-label="List view"
+                onClick={() => setView("list")}
+                className={cn(
+                  "p-1.5 rounded-full transition",
+                  viewMode === "list" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <ListIcon size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -413,7 +493,7 @@ export default function LibraryPage() {
       )}
 
       {/* Book grid */}
-      {!loading && filtered.length > 0 && (
+      {!loading && filtered.length > 0 && viewMode === "grid" && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {filtered.map((book) => (
             <BookCard
@@ -423,6 +503,8 @@ export default function LibraryPage() {
               onMenuToggle={() => setMenuBookId(menuBookId === book.id ? null : book.id)}
               onFavorite={() => toggleFavorite(book.id, book.isFavorite)}
               onDelete={() => deleteBook(book.id)}
+              onRename={() => renameBook(book.id, book.title)}
+              onOcr={() => runOcrFor(book.id)}
               onOpen={() => router.push(`/reader/${book.id}`)}
             />
           ))}
@@ -439,6 +521,26 @@ export default function LibraryPage() {
               Add book
             </span>
           </button>
+        </div>
+      )}
+
+      {/* Book list */}
+      {!loading && filtered.length > 0 && viewMode === "list" && (
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          {filtered.map((book, i) => (
+            <BookRow
+              key={book.id}
+              book={book}
+              first={i === 0}
+              menuOpen={menuBookId === book.id}
+              onMenuToggle={() => setMenuBookId(menuBookId === book.id ? null : book.id)}
+              onFavorite={() => toggleFavorite(book.id, book.isFavorite)}
+              onDelete={() => deleteBook(book.id)}
+              onRename={() => renameBook(book.id, book.title)}
+              onOcr={() => runOcrFor(book.id)}
+              onOpen={() => router.push(`/reader/${book.id}`)}
+            />
+          ))}
         </div>
       )}
 
@@ -542,6 +644,8 @@ function BookCard({
   onMenuToggle,
   onFavorite,
   onDelete,
+  onRename,
+  onOcr,
   onOpen,
 }: {
   book: Book;
@@ -549,6 +653,8 @@ function BookCard({
   onMenuToggle: () => void;
   onFavorite: () => void;
   onDelete: () => void;
+  onRename: () => void;
+  onOcr: () => void;
   onOpen: () => void;
 }) {
   const Icon = FILE_ICONS[book.fileType] || FileText;
@@ -619,38 +725,155 @@ function BookCard({
         </div>
         <div className="relative">
           <button
+            aria-label="Book options"
             onClick={onMenuToggle}
-            className="p-1 text-muted-foreground hover:text-foreground transition opacity-0 group-hover:opacity-100"
+            className="p-1.5 -mr-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition"
           >
-            <MoreVertical size={12} />
+            <MoreVertical size={14} />
           </button>
-          <AnimatePresence>
-            {menuOpen && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="absolute right-0 top-8 z-30 bg-background border border-border rounded-xl shadow-xl py-1 min-w-[130px]"
-              >
-                <button
-                  onClick={onFavorite}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition"
-                >
-                  <Star size={13} className={book.isFavorite ? "text-amber-500 fill-amber-500" : ""} />
-                  {book.isFavorite ? "Unfavorite" : "Favorite"}
-                </button>
-                <button
-                  onClick={onDelete}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition"
-                >
-                  <Trash2 size={13} />
-                  Delete
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <BookMenu
+            open={menuOpen}
+            book={book}
+            onFavorite={onFavorite}
+            onDelete={onDelete}
+            onRename={onRename}
+            onOcr={onOcr}
+          />
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function BookMenu({
+  open,
+  book,
+  onFavorite,
+  onDelete,
+  onRename,
+  onOcr,
+}: {
+  open: boolean;
+  book: Book;
+  onFavorite: () => void;
+  onDelete: () => void;
+  onRename: () => void;
+  onOcr: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: -4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: -4 }}
+          transition={{ duration: 0.12 }}
+          className="absolute right-0 top-8 z-30 bg-background border border-border rounded-xl shadow-xl py-1 min-w-[170px]"
+        >
+          <button onClick={onRename} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition">
+            <Pencil size={13} />
+            Rename
+          </button>
+          <button onClick={onFavorite} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition">
+            <Star size={13} className={book.isFavorite ? "text-amber-500 fill-amber-500" : ""} />
+            {book.isFavorite ? "Unfavorite" : "Favorite"}
+          </button>
+          {book.fileType === "pdf" && (
+            <button onClick={onOcr} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition">
+              <ScanText size={13} />
+              Run OCR
+            </button>
+          )}
+          <div className="my-1 border-t border-border" />
+          <button onClick={onDelete} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition">
+            <Trash2 size={13} />
+            Delete
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function BookRow({
+  book,
+  first,
+  menuOpen,
+  onMenuToggle,
+  onFavorite,
+  onDelete,
+  onRename,
+  onOcr,
+  onOpen,
+}: {
+  book: Book;
+  first: boolean;
+  menuOpen: boolean;
+  onMenuToggle: () => void;
+  onFavorite: () => void;
+  onDelete: () => void;
+  onRename: () => void;
+  onOcr: () => void;
+  onOpen: () => void;
+}) {
+  const Icon = FILE_ICONS[book.fileType] || FileText;
+  const percent = book.progress?.percentComplete ?? 0;
+  const sizeMb = book.fileSize ? (book.fileSize / 1024 / 1024).toFixed(1) : null;
+
+  return (
+    <div className={cn("relative flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 hover:bg-accent/40 transition", !first && "border-t border-border")}>
+      <button onClick={onOpen} className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0 text-left">
+        <div
+          className="w-10 h-14 sm:w-12 sm:h-16 rounded-lg overflow-hidden shrink-0 flex items-center justify-center shadow-sm"
+          style={{ backgroundColor: book.coverColor || "#4338CA" }}
+        >
+          {book.coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <Icon size={16} className="text-white/70" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">{book.title}</p>
+            {book.isFavorite && <Heart size={11} className="text-red-500 fill-red-500 shrink-0" />}
+          </div>
+          {book.author && (
+            <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+          )}
+          <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+            <span className="uppercase font-bold tracking-wider">{book.fileType}</span>
+            {book.pageCount ? <><span className="opacity-40">·</span><span>{book.pageCount} pages</span></> : null}
+            {sizeMb ? <><span className="opacity-40">·</span><span>{sizeMb} MB</span></> : null}
+            {percent > 0 && <><span className="opacity-40">·</span><span className="text-primary font-semibold">{Math.round(percent)}% read</span></>}
+          </div>
+        </div>
+      </button>
+
+      {percent > 0 && percent < 100 && (
+        <div className="hidden sm:block w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
+        </div>
+      )}
+
+      <div className="relative shrink-0">
+        <button
+          aria-label="Book options"
+          onClick={onMenuToggle}
+          className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition"
+        >
+          <MoreVertical size={16} />
+        </button>
+        <BookMenu
+          open={menuOpen}
+          book={book}
+          onFavorite={onFavorite}
+          onDelete={onDelete}
+          onRename={onRename}
+          onOcr={onOcr}
+        />
+      </div>
+    </div>
   );
 }
