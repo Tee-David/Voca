@@ -3,11 +3,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, List, Settings2,
-  Loader2, Minus, Plus, Play, Pause, Volume2, Bookmark,
+  ChevronLeft, List, Settings2,
+  Loader2, Minus, Plus, Bookmark,
   BookmarkCheck, Moon, Sun, Type, Download, Timer, X,
-  SkipBack, SkipForward, Maximize2, RotateCcw, RotateCw, MessageSquare, Search, MoreHorizontal,
-  FileText, AlignLeft
+  Pencil, Star, Search, MoreHorizontal,
+  FileText, AlignLeft, ChevronDown, Mic
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BottomSheet, BottomSheetTrigger, BottomSheetContent } from "@/components/ui/bottom-sheet";
@@ -23,8 +23,11 @@ import { getFileUrl } from "@/lib/fileUrl";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
+import { SpeedControl } from "@/components/reader/SpeedControl";
 import { AudiobookExport } from "@/components/reader/AudiobookExport";
-import { WaveformScrubber } from "@/components/reader/WaveformScrubber";
+import { PlayerPill } from "@/components/reader/PlayerPill";
+import { TitleActionCard } from "@/components/reader/TitleActionCard";
+import { AiRail, type AiAction } from "@/components/reader/AiRail";
 import { cn } from "@/lib/utils";
 
 type Book = {
@@ -40,7 +43,11 @@ type Book = {
   ocrStatus?: string | null;
   ocrError?: string | null;
   pageCount?: number | null;
+  wordCount?: number | null;
+  isFavorite?: boolean;
 };
+
+type Panel2 = "voice" | "chapters" | "settings" | "bookmarks" | "search" | "pronunciations" | "download" | "ai" | null;
 
 type BookmarkItem = {
   id: string;
@@ -52,7 +59,7 @@ type BookmarkItem = {
 };
 
 type ReaderTheme = "light" | "dark" | "sepia";
-type Panel = "voice" | "chapters" | "settings" | "bookmarks" | "search" | "pronunciations" | null;
+type Panel = Panel2;
 
 type Pronunciation = { from: string; to: string };
 const PRONUNCIATION_KEY = (bookId: string) => `voca:pron:${bookId}`;
@@ -120,6 +127,15 @@ export default function ReaderPage() {
   const [newPronTo, setNewPronTo] = useState("");
   const prewarmAbortRef = useRef<AbortController | null>(null);
   const prewarmedRef = useRef<Set<number>>(new Set());
+  const [titleCardOpen, setTitleCardOpen] = useState(false);
+  const [topHidden, setTopHidden] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [aiAction, setAiAction] = useState<AiAction | null>(null);
+  const topIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cursorColor, setCursorColor] = useState<string>("purple");
+  const [highlightSentence, setHighlightSentence] = useState(true);
+  const [autoHidePlayer, setAutoHidePlayer] = useState(true);
+  const [autoPlayAudio, setAutoPlayAudio] = useState(false);
 
   const tts = useKokoro();
   const player = usePlayer();
@@ -161,6 +177,7 @@ export default function ReaderPage() {
       const data: Book = await res.json();
       setBook(data);
       if (data.bookmarks) setBookmarks(data.bookmarks);
+      setIsFavorite(!!data.isFavorite);
 
       // Book shell is available — flip off the blocking loader so the page is interactive
       setLoading(false);
@@ -290,6 +307,41 @@ export default function ReaderPage() {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentChapter]);
 
+  // Top strip auto-hide after 3s idle while playing
+  useEffect(() => {
+    function wakeTop() {
+      setTopHidden(false);
+      if (topIdleRef.current) clearTimeout(topIdleRef.current);
+      if (!player.playing) return;
+      topIdleRef.current = setTimeout(() => setTopHidden(true), 3000);
+    }
+    wakeTop();
+    window.addEventListener("pointermove", wakeTop, { passive: true });
+    window.addEventListener("touchstart", wakeTop, { passive: true });
+    window.addEventListener("keydown", wakeTop);
+    return () => {
+      if (topIdleRef.current) clearTimeout(topIdleRef.current);
+      window.removeEventListener("pointermove", wakeTop);
+      window.removeEventListener("touchstart", wakeTop);
+      window.removeEventListener("keydown", wakeTop);
+    };
+  }, [player.playing]);
+
+  async function toggleFavorite() {
+    if (!book) return;
+    const next = !isFavorite;
+    setIsFavorite(next);
+    try {
+      await fetch(`/api/library/${book.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isFavorite: next }),
+      });
+    } catch {
+      setIsFavorite(!next);
+    }
+  }
+
   // Auto-scroll to current sentence during TTS playback
   useEffect(() => {
     if (currentSentence < 0 || !player.playing) return;
@@ -415,6 +467,55 @@ export default function ReaderPage() {
       if (raw) setPronunciations(JSON.parse(raw));
     } catch { /* ignore */ }
   }, [id]);
+
+  // Load per-book cursor color
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const raw = localStorage.getItem(`voca:reader:cursor:${id}`);
+      if (raw) setCursorColor(raw);
+    } catch { /* ignore */ }
+  }, [id]);
+
+  // Load global listening prefs (auto-hide, auto-play, highlight sentence)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("voca:reader:listening");
+      if (raw) {
+        const v = JSON.parse(raw);
+        if (typeof v.autoHidePlayer === "boolean") setAutoHidePlayer(v.autoHidePlayer);
+        if (typeof v.autoPlayAudio === "boolean") setAutoPlayAudio(v.autoPlayAudio);
+        if (typeof v.highlightSentence === "boolean") setHighlightSentence(v.highlightSentence);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Persist listening prefs whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "voca:reader:listening",
+        JSON.stringify({ autoHidePlayer, autoPlayAudio, highlightSentence })
+      );
+    } catch { /* ignore */ }
+  }, [autoHidePlayer, autoPlayAudio, highlightSentence]);
+
+  // Persist cursor color per book
+  useEffect(() => {
+    if (!id) return;
+    try { localStorage.setItem(`voca:reader:cursor:${id}`, cursorColor); } catch { /* ignore */ }
+  }, [id, cursorColor]);
+
+  // Auto-play once chapters are loaded if user opted in
+  useEffect(() => {
+    if (!autoPlayAudio) return;
+    if (!chapters.length || player.playing) return;
+    if (tts.status === "loading") return;
+    // Defer one tick so worker init can race
+    const t = setTimeout(() => { handlePlay(); }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlayAudio, chapters.length, currentChapter]);
 
   function savePronunciations(next: Pronunciation[]) {
     setPronunciations(next);
@@ -661,56 +762,73 @@ export default function ReaderPage() {
   return (
     <div className={cn("flex flex-col h-[calc(100dvh-5rem)] lg:h-dvh relative overflow-hidden", themeStyle.bg)}>
       
-      {/* ─── Purple gradient top strip ─── */}
-      <div className="relative shrink-0 z-10 pt-safe">
-        <div
-          className={cn(
-            "h-24 sm:h-28 px-4 pt-4 flex items-start justify-between rounded-b-[28px]",
-            theme === "sepia"
-              ? "bg-gradient-to-b from-[#e9d9c5] via-[#e4d1b7] to-[#dec7a7]"
-              : "bg-gradient-to-b from-primary/15 via-primary/20 to-primary/30"
-          )}
-        >
+      {/* ─── Flat transparent top strip (Phase 1a) ─── */}
+      <div
+        className={cn(
+          "sticky top-0 z-20 shrink-0 pt-safe transition-transform duration-300",
+          topHidden ? "-translate-y-[110%]" : "translate-y-0"
+        )}
+        onPointerEnter={() => setTopHidden(false)}
+      >
+        <div className={cn(
+          "px-3 sm:px-5 pt-3 pb-2 flex items-center gap-1.5 backdrop-blur-md",
+          theme === "dark" ? "bg-[#1a1a2e]/40" : theme === "sepia" ? "bg-[#f4ecd8]/40" : "bg-white/40"
+        )}>
+          <IconPill onClick={() => router.push("/library")} title="Back" theme={theme}>
+            <ChevronLeft size={18} />
+          </IconPill>
+
+          <IconPill onClick={() => togglePanel("bookmarks")} title="Bookmarks" theme={theme} active={currentPageBookmarked}>
+            <Pencil size={16} />
+          </IconPill>
+
+          <IconPill onClick={() => togglePanel("chapters")} title="Chapters" theme={theme}>
+            <List size={18} />
+          </IconPill>
+
+          {/* Title chip (drops TitleActionCard) */}
           <button
-            onClick={() => router.push("/library")}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20 transition backdrop-blur-sm shadow-sm"
+            onClick={() => setTitleCardOpen((v) => !v)}
+            className={cn(
+              "flex-1 mx-1 flex items-center justify-center gap-1.5 h-9 rounded-full px-3 transition active:scale-[0.98] min-w-0",
+              theme === "dark" ? "hover:bg-white/5 text-white/90" : theme === "sepia" ? "hover:bg-[#5b4636]/5 text-[#5b4636]" : "hover:bg-foreground/5 text-foreground/90"
+            )}
+            title="Book actions"
           >
-            <ArrowLeft size={18} className="text-foreground" />
+            <span className="text-sm font-bold truncate max-w-[40vw] sm:max-w-[260px]">{book?.title}</span>
+            <ChevronDown size={14} className={cn("opacity-60 transition-transform shrink-0", titleCardOpen && "rotate-180")} />
           </button>
 
-          {book?.fileType === "pdf" && (
-            <div className="flex items-center gap-1 p-1 rounded-full bg-white/70 dark:bg-white/10 backdrop-blur-sm shadow-sm">
-              <button
-                onClick={() => setViewMode("text")}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition",
-                  viewMode === "text"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground/70 hover:text-foreground"
-                )}
-                title="Text view (for TTS)"
-              >
-                <AlignLeft size={13} /> Text
-              </button>
-              <button
-                onClick={() => setViewMode("pdf")}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition",
-                  viewMode === "pdf"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground/70 hover:text-foreground"
-                )}
-                title="Original PDF"
-              >
-                <FileText size={13} /> PDF
-              </button>
-            </div>
-          )}
+          <IconPill onClick={() => setPanel("download")} title="Export audiobook" theme={theme}>
+            <Download size={16} />
+          </IconPill>
+
+          <IconPill onClick={toggleFavorite} title="Favorite" theme={theme} active={isFavorite}>
+            <Star size={16} className={isFavorite ? "fill-current" : ""} />
+          </IconPill>
+
+          <IconPill onClick={() => togglePanel("search")} title="Search" theme={theme}>
+            <Search size={16} />
+          </IconPill>
+
+          <IconPill onClick={() => togglePanel("settings")} title="Settings" theme={theme}>
+            <Settings2 size={16} />
+          </IconPill>
+
+          <span className={cn(
+            "hidden sm:inline-block text-[11px] font-bold tabular-nums px-1.5 opacity-60",
+            themeStyle.text
+          )}>
+            {chapters.length > 0 ? `${currentChapter + 1}/${chapters.length}` : ""}
+          </span>
 
           <BottomSheet>
             <BottomSheetTrigger>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20 transition backdrop-blur-sm shadow-sm">
-                <MoreHorizontal size={18} className="text-foreground" />
+              <div className={cn(
+                "w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95",
+                theme === "dark" ? "hover:bg-white/5 text-white/85" : theme === "sepia" ? "hover:bg-[#5b4636]/5 text-[#5b4636]" : "hover:bg-foreground/5 text-foreground/85"
+              )}>
+                <MoreHorizontal size={18} />
               </div>
             </BottomSheetTrigger>
           <BottomSheetContent className="bg-[#18181A] text-white border-white/5">
@@ -735,7 +853,7 @@ export default function ReaderPage() {
                   <span className="text-xs font-semibold">Search</span>
                 </button>
                 <button onClick={() => togglePanel("voice")} className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
-                  <MessageSquare size={24} className="text-white/80" />
+                  <Mic size={24} className="text-white/80" />
                   <span className="text-xs font-semibold">Change Voice</span>
                 </button>
                 <button onClick={() => setSleepTimer(sleepTimer > 0 ? 0 : 15)} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", sleepTimer > 0 ? "bg-primary text-primary-foreground" : "bg-white/5 hover:bg-white/10")}>
@@ -743,6 +861,38 @@ export default function ReaderPage() {
                   <span className="text-xs font-semibold">{sleepTimer > 0 ? `${Math.ceil(sleepRemaining / 60)}m left` : "Sleep timer"}</span>
                 </button>
               </div>
+
+              {/* AI chips (mobile fallback for desktop AiRail) */}
+              <div className="lg:hidden mb-6">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-white/40 mb-2">AI tools</p>
+                <AiRail
+                  theme="dark"
+                  variant="chips"
+                  active={aiAction}
+                  onSelect={(a) => { setAiAction(a); setPanel("ai"); }}
+                />
+              </div>
+
+              {/* PDF view-mode toggle (moved from old top strip) */}
+              {book?.fileType === "pdf" && (
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wider font-bold text-white/40 mr-1">View</span>
+                  <button
+                    onClick={() => setViewMode("text")}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition",
+                      viewMode === "text" ? "bg-primary text-primary-foreground" : "bg-white/5 text-white/70 hover:bg-white/10"
+                    )}
+                  ><AlignLeft size={13} /> Text</button>
+                  <button
+                    onClick={() => setViewMode("pdf")}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition",
+                      viewMode === "pdf" ? "bg-primary text-primary-foreground" : "bg-white/5 text-white/70 hover:bg-white/10"
+                    )}
+                  ><FileText size={13} /> Original PDF</button>
+                </div>
+              )}
 
               {/* Vertical Actions */}
               <div className="flex flex-col gap-1">
@@ -820,16 +970,14 @@ export default function ReaderPage() {
               onSampleReady={tts.onSample}
             />
             <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Speed — <span className="text-primary">{tts.speed.toFixed(2)}×</span></label>
-                <button
-                  onClick={() => tts.setAsDefault(tts.voice, tts.speed)}
-                  className="text-[11px] font-semibold text-primary hover:underline"
-                >
-                  Save as default
-                </button>
-              </div>
-              <input type="range" min={0.5} max={2.0} step={0.05} value={tts.speed} onChange={(e) => tts.changeSpeed(parseFloat(e.target.value))} className="voca-speed-range w-full" />
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Speed</div>
+              <SpeedControl
+                theme={theme}
+                themeText={themeStyle.text}
+                speed={tts.speed}
+                onChange={(s) => tts.changeSpeed(s)}
+                onSaveAsDefault={() => tts.setAsDefault(tts.voice, tts.speed)}
+              />
             </div>
             {book && chapters.length > 0 && <AudiobookExport bookId={book.id} bookTitle={book.title} chapters={chapters} voice={tts.voice} speed={tts.speed} />}
           </motion.div>
@@ -839,22 +987,67 @@ export default function ReaderPage() {
       <AnimatePresence>
         {panel === "chapters" && (
           <motion.div
-            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute inset-0 z-30 overflow-y-auto", themeStyle.bg)}
+            initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 320 }}
+            className={cn(
+              "absolute z-30 top-0 bottom-0 left-0 w-[min(92vw,360px)] overflow-y-auto border-r",
+              theme === "dark" ? "bg-[#1a1a2e] border-white/8" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-card border-border/60"
+            )}
+            style={{ boxShadow: "var(--shadow-float)" }}
+            ref={(el) => {
+              if (!el) return;
+              // Scroll to active chapter when sheet opens
+              const target = el.querySelector(`[data-ch="${currentChapter}"]`) as HTMLElement | null;
+              target?.scrollIntoView({ block: "center" });
+            }}
           >
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className={cn("font-bold", themeStyle.text)}>Chapters</h3>
-                <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-              </div>
-              <div className="space-y-1">
-                {chapters.map((ch, idx) => (
-                  <button key={idx} onClick={() => { setCurrentChapter(idx); setPanel(null); }} className={cn("w-full text-left px-3 py-2.5 rounded-xl text-sm transition flex items-center gap-2", idx === currentChapter ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted")}>
-                    <span className="text-muted-foreground text-xs w-6 shrink-0">{idx + 1}</span>
-                    <span className={cn("truncate", idx === currentChapter ? "text-primary" : themeStyle.text)}>{ch.title}</span>
-                  </button>
-                ))}
+            <div className="sticky top-0 z-10 backdrop-blur-md bg-inherit px-4 pt-4 pb-2 flex items-center justify-between">
+              <h3 className={cn("font-bold text-sm", themeStyle.text)}>Navigator</h3>
+              <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+
+            <div className="px-3 pt-1 pb-4">
+              <div className="space-y-0.5">
+                {chapters.map((ch, idx) => {
+                  const active = idx === currentChapter;
+                  return (
+                    <button
+                      key={idx}
+                      data-ch={idx}
+                      onClick={() => { setCurrentChapter(idx); setPanel(null); }}
+                      className={cn(
+                        "w-full text-left rounded-xl px-3 py-2.5 transition relative flex items-center justify-between gap-3 group",
+                        active
+                          ? theme === "dark" ? "bg-primary/15" : "bg-primary/10"
+                          : theme === "dark" ? "hover:bg-white/5" : "hover:bg-foreground/5"
+                      )}
+                    >
+                      {active && (
+                        <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary" />
+                      )}
+                      <span className="flex items-center gap-2 min-w-0">
+                        {active && (
+                          <span className="text-primary shrink-0" aria-hidden>
+                            <span className="inline-flex items-end gap-[2px] h-3">
+                              <span className="w-[2px] h-2 bg-current animate-pulse" />
+                              <span className="w-[2px] h-3 bg-current animate-pulse [animation-delay:120ms]" />
+                              <span className="w-[2px] h-1.5 bg-current animate-pulse [animation-delay:240ms]" />
+                            </span>
+                          </span>
+                        )}
+                        <span className={cn("text-[12px] font-bold uppercase tracking-wider truncate", active ? "text-primary" : themeStyle.text)}>
+                          Chapter {idx + 1}
+                          {ch.title && ch.title !== `Chapter ${idx + 1}` && (
+                            <span className="opacity-70 normal-case font-medium ml-1.5 tracking-normal">: {ch.title}</span>
+                          )}
+                        </span>
+                      </span>
+                      <span className={cn("text-[11px] tabular-nums opacity-60 shrink-0", active ? "text-primary" : themeStyle.text)}>
+                        {idx + 1}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </motion.div>
@@ -1024,28 +1217,157 @@ export default function ReaderPage() {
           <motion.div
             initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute bottom-0 inset-x-0 z-30 border-t rounded-t-2xl p-5", theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border")}
+            className={cn(
+              "absolute bottom-0 inset-x-0 z-30 border-t rounded-t-[var(--radius-sheet)] p-5 max-h-[85vh] overflow-y-auto",
+              theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border"
+            )}
+            style={{ boxShadow: "var(--shadow-float)" }}
           >
-            <div className="flex items-center justify-between mb-5">
-              <h3 className={cn("font-bold", themeStyle.text)}>Display Settings</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={cn("font-bold text-base", themeStyle.text)}>Reader settings</h3>
               <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
-            <div className="mb-5 flex gap-2">
+
+            {/* ── Appearance ── */}
+            <SectionLabel theme={theme}>Appearance</SectionLabel>
+            <div className="mb-3 grid grid-cols-3 gap-1.5 p-1 rounded-full bg-muted/40">
               {(Object.entries(THEME_STYLES) as [ReaderTheme, typeof THEME_STYLES["light"]][]).map(([key, style]) => (
-                <button key={key} onClick={() => setTheme(key)} className={cn("flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition border", theme === key ? "border-primary bg-primary/10 text-primary" : "border-transparent bg-muted text-foreground")}>
-                  <style.icon size={14} />{style.label}
+                <button
+                  key={key}
+                  onClick={() => setTheme(key)}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold transition active:scale-95",
+                    theme === key ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:text-foreground"
+                  )}
+                >
+                  <style.icon size={13} />{style.label}
                 </button>
               ))}
             </div>
-            <div className="mb-5 flex gap-2">
+
+            <div className="mb-3 flex gap-2 flex-wrap">
               {FONT_FAMILIES.map((f) => (
-                <button key={f.label} onClick={() => setFontFamily(f.value)} className={cn("px-4 py-2 rounded-xl text-xs font-semibold transition", fontFamily === f.value ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")} style={{ fontFamily: f.value }}>{f.label}</button>
+                <button
+                  key={f.label}
+                  onClick={() => setFontFamily(f.value)}
+                  className={cn("pill", fontFamily === f.value ? "pill-primary" : "pill-surface")}
+                  style={{ fontFamily: f.value }}
+                >
+                  {f.label}
+                </button>
               ))}
             </div>
-            <div className="mb-5 flex items-center gap-3">
-              <button onClick={() => setFontSize((s) => Math.max(12, s - 2))} className="p-2 bg-muted rounded"><Minus size={16}/></button>
-              <div className="flex-1 h-1.5 bg-muted rounded-full relative"><div className="absolute inset-y-0 left-0 bg-primary rounded-full" style={{ width: `${((fontSize - 12) / 16) * 100}%` }} /></div>
-              <button onClick={() => setFontSize((s) => Math.min(28, s + 2))} className="p-2 bg-muted rounded"><Plus size={16}/></button>
+
+            <div className="mb-4 flex items-center gap-3">
+              <button onClick={() => setFontSize((s) => Math.max(12, s - 2))} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95"><Minus size={14}/></button>
+              <div className="flex-1 h-1.5 bg-muted rounded-full relative">
+                <div className="absolute inset-y-0 left-0 bg-primary rounded-full" style={{ width: `${((fontSize - 12) / 16) * 100}%` }} />
+              </div>
+              <span className={cn("text-[11px] font-bold tabular-nums w-7 text-center", themeStyle.text)}>{fontSize}</span>
+              <button onClick={() => setFontSize((s) => Math.min(28, s + 2))} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95"><Plus size={14}/></button>
+            </div>
+
+            {/* Cursor / highlight color */}
+            <div className="mb-4">
+              <label className={cn("text-[11px] uppercase tracking-wider font-bold opacity-60 block mb-2", themeStyle.text)}>Highlight color</label>
+              <div className="flex items-center gap-2">
+                {[
+                  { id: "purple", className: "bg-primary" },
+                  { id: "pink", className: "bg-pink-500" },
+                  { id: "red", className: "bg-red-500" },
+                  { id: "green", className: "bg-emerald-500" },
+                  { id: "orange", className: "bg-orange-500" },
+                ].map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setCursorColor(c.id)}
+                    aria-label={c.id}
+                    className={cn(
+                      "w-8 h-8 rounded-full transition relative active:scale-90",
+                      c.className,
+                      cursorColor === c.id ? "ring-2 ring-offset-2 ring-foreground/40 ring-offset-background scale-110" : ""
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* View mode (PDF only) */}
+            {book?.fileType === "pdf" && (
+              <div className="mb-4">
+                <label className={cn("text-[11px] uppercase tracking-wider font-bold opacity-60 block mb-2", themeStyle.text)}>View mode</label>
+                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-full bg-muted/40">
+                  <button
+                    onClick={() => setViewMode("text")}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold transition active:scale-95",
+                      viewMode === "text" ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:text-foreground"
+                    )}
+                  ><AlignLeft size={13} /> Text</button>
+                  <button
+                    onClick={() => setViewMode("pdf")}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold transition active:scale-95",
+                      viewMode === "pdf" ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:text-foreground"
+                    )}
+                  ><FileText size={13} /> Original PDF</button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Listening (Phase 3b) ── */}
+            <SectionLabel theme={theme}>Listening</SectionLabel>
+
+            <ToggleRow
+              theme={theme}
+              themeText={themeStyle.text}
+              label="Auto-hide player"
+              hint="Fades player after 3s of inactivity while playing"
+              checked={autoHidePlayer}
+              onChange={setAutoHidePlayer}
+            />
+            <ToggleRow
+              theme={theme}
+              themeText={themeStyle.text}
+              label="Auto-play audio"
+              hint="Start narration automatically when a book opens"
+              checked={autoPlayAudio}
+              onChange={setAutoPlayAudio}
+            />
+            <ToggleRow
+              theme={theme}
+              themeText={themeStyle.text}
+              label="Highlight sentence"
+              hint="Tint the active sentence as it's read"
+              checked={highlightSentence}
+              onChange={setHighlightSentence}
+            />
+
+            <div className="mt-4">
+              <label className={cn("text-[11px] uppercase tracking-wider font-bold opacity-60 block mb-2", themeStyle.text)}>Sleep timer</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { v: 0, label: "Off" },
+                  { v: 5, label: "5m" },
+                  { v: 15, label: "15m" },
+                  { v: 30, label: "30m" },
+                  { v: 45, label: "45m" },
+                  { v: 60, label: "60m" },
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setSleepTimer(opt.v)}
+                    className={cn("pill", sleepTimer === opt.v ? "pill-primary" : "pill-surface")}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {sleepTimer > 0 && (
+                <p className={cn("text-[11px] mt-2 opacity-70", themeStyle.text)}>
+                  Pausing in {Math.ceil(sleepRemaining / 60)} min · {(sleepRemaining % 60).toString().padStart(2, "0")}s
+                </p>
+              )}
             </div>
           </motion.div>
         )}
@@ -1203,114 +1525,181 @@ export default function ReaderPage() {
         )}
       </div>
 
-      {/* ─── Waveform player card (reference-style, theme-aware) ─── */}
-      <div className="absolute left-3 right-3 bottom-3 z-30 pointer-events-none">
+      {/* ─── Floating player pill (Phase 1c) ─── */}
+      <PlayerPill
+        theme={theme}
+        themeText={themeStyle.text}
+        playing={player.playing}
+        loading={tts.status === "loading"}
+        hasChapter={!!chapter}
+        speed={tts.speed}
+        currentTime={player.currentTime}
+        duration={player.duration}
+        chapterLabel={chapter?.title ?? `Chapter ${currentChapter + 1}`}
+        coverUrl={book?.coverUrl}
+        autoHide={autoHidePlayer}
+        onPlay={handlePlay}
+        onSeekRelative={goRelativeTime}
+        onSpeedCycle={() => {
+          const ticks = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+          const next = ticks[(ticks.indexOf(tts.speed) + 1) % ticks.length] ?? 1.0;
+          tts.changeSpeed(next);
+        }}
+        onChapterChevron={() => togglePanel("chapters")}
+        onTimelineSeek={(ratio) => player.duration && player.seek(ratio * player.duration)}
+        formatTime={formatTime}
+      />
+
+      {/* ─── Title action card (Phase 1b) ─── */}
+      {book && (
+        <TitleActionCard
+          open={titleCardOpen}
+          onClose={() => setTitleCardOpen(false)}
+          theme={theme}
+          themeText={themeStyle.text}
+          bookId={book.id}
+          title={book.title}
+          coverUrl={book.coverUrl}
+          fileType={book.fileType}
+          pageCount={book.pageCount}
+          wordCount={book.wordCount ?? undefined}
+          r2Key={book.r2Key}
+          onTitleSaved={(t) => setBook((prev) => (prev ? { ...prev, title: t } : prev))}
+          onDownload={() => { setTitleCardOpen(false); setPanel("download"); }}
+        />
+      )}
+
+      {/* ─── AI rail (Phase 1d) ─── */}
+      <AiRail
+        theme={theme}
+        active={aiAction}
+        onSelect={(a) => { setAiAction(a); setPanel("ai"); }}
+      />
+
+      {/* ─── Download / Export sheet (Phase 1b wiring) ─── */}
+      <AnimatePresence>
+        {panel === "download" && book && chapters.length > 0 && (
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute bottom-0 inset-x-0 z-40 border-t rounded-t-3xl p-5 max-h-[80vh] overflow-y-auto",
+              theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border")}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={cn("font-bold", themeStyle.text)}>Export audiobook</h3>
+              <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18}/></button>
+            </div>
+            <p className={cn("text-xs mb-4 opacity-70", themeStyle.text)}>
+              Generate the full book as an MP3 with the current voice ({tts.voice}) at {tts.speed}× speed.
+            </p>
+            <AudiobookExport bookId={book.id} bookTitle={book.title} chapters={chapters} voice={tts.voice} speed={tts.speed} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── AI sheet placeholder (Phase 1d wiring; full features land in Phase 9) ─── */}
+      <AnimatePresence>
+        {panel === "ai" && aiAction && (
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute bottom-0 inset-x-0 z-40 border-t rounded-t-3xl p-5 max-h-[70vh] overflow-y-auto",
+              theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border")}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={cn("font-bold capitalize", themeStyle.text)}>{aiAction}</h3>
+              <button onClick={() => { setPanel(null); setAiAction(null); }} className="p-1 text-muted-foreground hover:text-foreground"><X size={18}/></button>
+            </div>
+            <div className="py-10 text-center">
+              <p className={cn("text-sm font-semibold opacity-80", themeStyle.text)}>Coming soon</p>
+              <p className={cn("text-xs mt-1 opacity-60", themeStyle.text)}>
+                Free, on-device {aiAction} powered by Transformers.js — landing in Phase 9.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function IconPill({
+  children, onClick, title, theme, active,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title: string;
+  theme: ReaderTheme;
+  active?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={cn(
+        "w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95 shrink-0",
+        active
+          ? "bg-primary/15 text-primary"
+          : theme === "dark"
+            ? "hover:bg-white/5 text-white/85"
+            : theme === "sepia"
+              ? "hover:bg-[#5b4636]/5 text-[#5b4636]"
+              : "hover:bg-foreground/5 text-foreground/85"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SectionLabel({ children, theme }: { children: React.ReactNode; theme: ReaderTheme }) {
+  return (
+    <p
+      className={cn(
+        "text-[10px] uppercase tracking-[0.18em] font-bold mb-2 mt-4 first:mt-0 opacity-50",
+        theme === "dark" ? "text-white" : theme === "sepia" ? "text-[#5b4636]" : "text-foreground"
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+function ToggleRow({
+  label, hint, checked, onChange, theme, themeText,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  theme: ReaderTheme;
+  themeText: string;
+}) {
+  return (
+    <button
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "w-full flex items-center justify-between gap-3 py-2.5 text-left",
+      )}
+    >
+      <div className="min-w-0">
+        <p className={cn("text-[13px] font-semibold", themeText)}>{label}</p>
+        {hint && <p className={cn("text-[11px] mt-0.5 opacity-60", themeText)}>{hint}</p>}
+      </div>
+      <div
+        className={cn(
+          "shrink-0 w-10 h-6 rounded-full transition relative",
+          checked ? "bg-primary" : theme === "dark" ? "bg-white/15" : "bg-muted"
+        )}
+      >
         <div
           className={cn(
-            "pointer-events-auto rounded-[28px] shadow-2xl backdrop-blur-xl px-5 pt-4 pb-5",
-            theme === "dark"
-              ? "bg-[#1f1f2e]/95 border border-white/5"
-              : theme === "sepia"
-                ? "bg-[#eedfc4]/95 border border-[#d4c5a9]/60"
-                : "bg-card/95 border border-border/50"
+            "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform",
+            checked && "translate-x-4"
           )}
-        >
-          <div className="max-w-2xl mx-auto">
-            {/* Chapter label */}
-            <p
-              className={cn("text-center font-bold text-base mb-2 truncate", themeStyle.text)}
-              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-            >
-              {chapter?.title ?? `Chapter ${currentChapter + 1}`}
-            </p>
-
-            {/* Waveform scrubber */}
-            <WaveformScrubber
-              currentTime={player.currentTime}
-              duration={player.duration}
-              onSeek={(ratio) => player.duration && player.seek(ratio * player.duration)}
-              formatTime={formatTime}
-              theme={theme}
-            />
-
-            {/* 5-button row */}
-            <div className="flex items-center justify-between mt-4">
-              <button
-                onClick={() => togglePanel("settings")}
-                className={cn(
-                  "w-11 h-11 rounded-full flex items-center justify-center transition",
-                  theme === "dark" ? "text-white/70 hover:bg-white/5" : "text-foreground/70 hover:bg-foreground/5"
-                )}
-                title="Display"
-              >
-                <Type size={18} />
-                <span className="sr-only">Aa</span>
-              </button>
-
-              <button
-                onClick={() => goRelativeTime(-10)}
-                disabled={!player.duration}
-                className={cn(
-                  "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
-                  theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-foreground/5"
-                )}
-                title="Back 10s"
-              >
-                <div className="relative flex items-center justify-center">
-                  <RotateCcw size={22} strokeWidth={2} />
-                  <span className="absolute text-[8px] font-black">10</span>
-                </div>
-              </button>
-
-              <button
-                onClick={handlePlay}
-                disabled={tts.status === "loading" || !chapter}
-                className={cn(
-                  "w-[58px] h-[58px] rounded-full flex items-center justify-center transition shadow-xl disabled:opacity-50 bg-primary text-primary-foreground hover:scale-105 active:scale-95"
-                )}
-              >
-                {tts.status === "loading" ? (
-                  <Loader2 size={24} className="animate-spin" />
-                ) : player.playing ? (
-                  <Pause size={24} strokeWidth={2.5} />
-                ) : (
-                  <Play size={24} strokeWidth={2.5} className="ml-0.5" />
-                )}
-              </button>
-
-              <button
-                onClick={() => goRelativeTime(30)}
-                disabled={!player.duration}
-                className={cn(
-                  "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
-                  theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-foreground/5"
-                )}
-                title="Forward 30s"
-              >
-                <div className="relative flex items-center justify-center">
-                  <RotateCw size={22} strokeWidth={2} />
-                  <span className="absolute text-[8px] font-black">30</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => {
-                  const ticks = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-                  const next = ticks[(ticks.indexOf(tts.speed) + 1) % ticks.length] ?? 1.0;
-                  tts.changeSpeed(next);
-                }}
-                className={cn(
-                  "w-11 h-11 rounded-full flex items-center justify-center text-[13px] font-black transition tabular-nums",
-                  theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-foreground/5"
-                )}
-                title="Speed"
-              >
-                {tts.speed}×
-              </button>
-            </div>
-          </div>
-        </div>
+        />
       </div>
-    </div>
+    </button>
   );
 }

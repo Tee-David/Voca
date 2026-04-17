@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Check, Volume2, Loader2, Pin, PinOff } from "lucide-react";
+import { Play, Pause, Loader2, Pin } from "lucide-react";
 import { KOKORO_VOICES, type VoiceId, type TTSStatus } from "@/hooks/useKokoro";
 import { cn } from "@/lib/utils";
 
@@ -15,9 +15,18 @@ interface VoiceSelectorProps {
   onSampleReady: (cb: (voice: string, audio: Blob) => void) => void;
 }
 
-const GENDER_COLORS: Record<string, string> = {
-  F: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
-  M: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+const FEATURED_IDS: VoiceId[] = ["af_bella", "am_adam", "bf_emma", "am_michael"];
+
+const AVATAR_TINTS: Record<string, string> = {
+  af_bella: "from-pink-300 to-rose-400",
+  af_nicole: "from-rose-300 to-pink-500",
+  af_sarah: "from-fuchsia-300 to-pink-400",
+  af_sky: "from-sky-300 to-indigo-400",
+  am_adam: "from-blue-300 to-indigo-500",
+  am_michael: "from-emerald-300 to-teal-500",
+  bf_emma: "from-violet-300 to-purple-500",
+  bf_isabella: "from-amber-300 to-orange-500",
+  bm_george: "from-slate-300 to-zinc-500",
 };
 
 export function VoiceSelector({
@@ -65,108 +74,129 @@ export function VoiceSelector({
     onSample(voiceId);
   }
 
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 mb-3">
-        <Volume2 size={16} className="text-primary" />
-        <h3 className="text-sm font-bold text-foreground">Voice</h3>
-        {ttsStatus === "loading" && (
-          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-            <Loader2 size={10} className="animate-spin" /> Loading model…
-          </span>
+  const featured = FEATURED_IDS
+    .map((id) => KOKORO_VOICES.find((v) => v.id === id))
+    .filter((v): v is (typeof KOKORO_VOICES)[number] => Boolean(v));
+  const us = KOKORO_VOICES.filter((v) => v.accent === "American");
+  const uk = KOKORO_VOICES.filter((v) => v.accent === "British");
+
+  const renderTile = (v: (typeof KOKORO_VOICES)[number]) => {
+    const selected = selectedVoice === v.id;
+    const isDefault = defaultVoice === v.id;
+    const isPlaying = playingVoice === v.id;
+    const isLoading = loadingVoice === v.id;
+    const tint = AVATAR_TINTS[v.id] ?? "from-slate-300 to-slate-500";
+
+    return (
+      <button
+        key={v.id}
+        onClick={() => onSelect(v.id)}
+        className={cn(
+          "group flex flex-col items-center gap-1.5 p-2 rounded-2xl transition active:scale-95",
+          selected ? "bg-primary/10" : "hover:bg-muted/60"
         )}
-      </div>
+      >
+        <div className="relative">
+          <div
+            className={cn(
+              "w-16 h-16 rounded-full bg-gradient-to-br flex items-center justify-center text-lg font-bold text-white shadow",
+              tint,
+              selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+            )}
+          >
+            {v.name[0]}
+          </div>
 
-      <div className="grid grid-cols-1 gap-1.5">
-        {KOKORO_VOICES.map((v) => {
-          const selected = selectedVoice === v.id;
-          const isDefault = defaultVoice === v.id;
-          const isPlaying = playingVoice === v.id;
-          const isLoading = loadingVoice === v.id;
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSample(v.id);
+            }}
+            disabled={ttsStatus === "loading" || ttsStatus === "idle"}
+            aria-label={`Play sample of ${v.name}`}
+            className={cn(
+              "absolute bottom-0 right-0 w-6 h-6 rounded-full flex items-center justify-center shadow-md",
+              "bg-background border border-border/60",
+              isPlaying && "bg-primary border-primary text-primary-foreground",
+              (ttsStatus === "loading" || ttsStatus === "idle") && "opacity-40"
+            )}
+          >
+            {isLoading ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause size={11} />
+            ) : (
+              <Play size={11} className="ml-[1px]" />
+            )}
+          </button>
 
-          return (
-            <div
-              key={v.id}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 transition cursor-pointer",
-                selected
-                  ? "bg-primary/10 border border-primary/30"
-                  : "hover:bg-muted border border-transparent"
-              )}
-              onClick={() => onSelect(v.id)}
-            >
-              {/* Avatar */}
-              <div
-                className={cn(
-                  "w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0",
-                  GENDER_COLORS[v.gender]
-                )}
-              >
-                {v.name[0]}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm font-semibold text-foreground">{v.name}</span>
-                  {selected && <Check size={14} className="text-primary" />}
-                  {isDefault && (
-                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
-                      <Pin size={9} /> Default
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] text-muted-foreground">
-                  {v.accent} · {v.gender === "F" ? "Female" : "Male"}
-                </span>
-              </div>
-
-              {/* Set default button */}
-              {onSetDefault && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSetDefault(v.id);
-                  }}
-                  title={isDefault ? "Current default" : "Set as default"}
-                  className={cn(
-                    "p-2 rounded-lg transition shrink-0",
-                    isDefault
-                      ? "text-primary bg-primary/10"
-                      : "text-muted-foreground hover:text-primary hover:bg-muted"
-                  )}
-                >
-                  {isDefault ? <Pin size={14} /> : <PinOff size={14} />}
-                </button>
-              )}
-
-              {/* Sample button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSample(v.id);
-                }}
-                disabled={ttsStatus === "loading" || ttsStatus === "idle"}
-                className={cn(
-                  "p-2 rounded-lg transition shrink-0",
-                  isPlaying
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
-                  (ttsStatus === "loading" || ttsStatus === "idle") && "opacity-40"
-                )}
-              >
-                {isLoading ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : isPlaying ? (
-                  <Pause size={14} />
-                ) : (
-                  <Play size={14} className="ml-0.5" />
-                )}
-              </button>
+          {isDefault && (
+            <div className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow">
+              <Pin size={10} />
             </div>
-          );
-        })}
+          )}
+        </div>
+
+        <div className="flex flex-col items-center min-w-0 w-full">
+          <span className={cn("text-[12px] font-semibold truncate w-full text-center", selected ? "text-primary" : "text-foreground")}>
+            {v.name}
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            {v.gender === "F" ? "Female" : "Male"}
+          </span>
+        </div>
+
+        {onSetDefault && !isDefault && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSetDefault(v.id); }}
+            className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition"
+          >
+            Pin default
+          </button>
+        )}
+        {onSetDefault && isDefault && (
+          <span className="text-[9px] uppercase tracking-wider font-bold text-primary">Default</span>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      {ttsStatus === "loading" && (
+        <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+          <Loader2 size={12} className="animate-spin" /> Loading model…
+        </div>
+      )}
+
+      <Section label="Featured">
+        <div className="grid grid-cols-3 gap-1">
+          {featured.map(renderTile)}
+        </div>
+      </Section>
+
+      <Section label="English · US">
+        <div className="grid grid-cols-3 gap-1">
+          {us.map(renderTile)}
+        </div>
+      </Section>
+
+      <Section label="English · UK">
+        <div className="grid grid-cols-3 gap-1">
+          {uk.map(renderTile)}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 mb-2 px-1">
+        {label}
       </div>
+      {children}
     </div>
   );
 }

@@ -46,6 +46,17 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-muted: var(--brand-muted);
+
+  /* Voca shape + motion tokens (Speechify-inspired) */
+  --radius-pill: 999px;
+  --radius-card: 1.75rem;   /* 28px */
+  --radius-sheet: 1.5rem;   /* 24px */
+
+  --shadow-card: 0 8px 24px -12px rgb(0 0 0 / 0.18);
+  --shadow-float: 0 24px 60px -20px rgb(0 0 0 / 0.32);
+
+  --ease-pop: cubic-bezier(0.2, 0.8, 0.2, 1.2);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 :root {
@@ -88,9 +99,10 @@
   --brand-foreground: oklch(1 0 0);
   --brand-muted: oklch(0.25 0.08 268);
 
-  --background: oklch(0.11 0.015 268);
+  /* Shifted from near-black to a softer reading dark (~#15151B / #1B1B22 surfaces) */
+  --background: oklch(0.155 0.008 270);
   --foreground: oklch(0.97 0 0);
-  --card: oklch(0.16 0.02 268);
+  --card: oklch(0.205 0.012 270);
   --card-foreground: oklch(0.97 0 0);
   --popover: oklch(0.16 0.02 268);
   --popover-foreground: oklch(0.97 0 0);
@@ -268,3 +280,71 @@
   border-radius: 999px;
   background: var(--muted);
 }
+
+/* Speechify-inspired shape utilities */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-pill);
+  padding: 0.5rem 0.875rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms var(--ease-pop);
+}
+.pill:active { transform: scale(0.97); }
+
+.pill-surface { background: var(--muted); color: var(--foreground); }
+.pill-surface:hover { background: color-mix(in oklab, var(--muted) 70%, var(--foreground) 6%); }
+
+.pill-primary { background: var(--primary); color: var(--primary-foreground); }
+.pill-primary:hover { filter: brightness(1.05); }
+
+.pill-ghost { background: transparent; color: var(--muted-foreground); }
+.pill-ghost:hover { background: var(--muted); color: var(--foreground); }
+
+/* Uniform sheet header: back-title-close */
+.sheet-header {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 2.5rem;
+  align-items: center;
+  padding: 0.75rem 0.25rem 1rem;
+}
+.sheet-header > :nth-child(2) {
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.9375rem;
+}
+.sheet-header button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.sheet-header button:hover { background: var(--muted); color: var(--foreground); }
+
+/* Floating card shell — used for the player pill and title-action card */
+.float-card {
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  backdrop-filter: saturate(140%) blur(16px);
+  -webkit-backdrop-filter: saturate(140%) blur(16px);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+}
+
+/* Keyframes for Voca sheet + pop entrances */
+@keyframes voca-sheet-in {
+  from { opacity: 0; transform: translateY(12%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes voca-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.anim-sheet-in { animation: voca-sheet-in 260ms var(--ease-sheet) both; }
+.anim-pop-in   { animation: voca-pop-in 200ms var(--ease-pop) both; }
