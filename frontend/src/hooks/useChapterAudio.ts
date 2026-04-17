@@ -95,7 +95,7 @@ export function useChapterAudio(tts: KokoroAPI, player: PlayerAPI) {
         }
       });
 
-      tts.generate(text, `${bookId}-ch${chapterIdx}`);
+      tts.generate({ text }, `${bookId}-ch${chapterIdx}`);
       return { source: "live" as const };
     },
     [tts, player, keyOf]

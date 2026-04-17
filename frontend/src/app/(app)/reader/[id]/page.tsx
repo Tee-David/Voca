@@ -23,7 +23,7 @@ import { getFileUrl } from "@/lib/fileUrl";
 import { buildSearchIndex, searchBook, clearSearchIndex, type SearchHit } from "@/lib/bookSearch";
 import { parseSSML, ssmlToPlainText, stripSSML, hasSSML } from "@/lib/ssml";
 import { haptic } from "@/lib/haptics";
-import { useKokoro } from "@/hooks/useKokoro";
+import { useKokoro, KOKORO_VOICES, type VoiceId } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
 import { SpeedControl } from "@/components/reader/SpeedControl";
@@ -981,13 +981,13 @@ function ReaderPageInner() {
               const bm = bookmarks.find((b) => b.page === currentChapter);
               if (bm) removeBookmark(bm.id);
             } else {
-              addBookmark(book.id, currentChapter, text);
+              addBookmark();
             }
           }
           break;
         case "/":
           e.preventDefault();
-          setPanel((p) => (p === "toc" ? null : "toc"));
+          togglePanel("chapters");
           break;
         case "Escape":
           if (panel) setPanel(null);
@@ -1909,6 +1909,10 @@ function ReaderPageInner() {
         currentTime={player.currentTime}
         duration={player.duration}
         chapterLabel={chapter?.title ?? `Chapter ${currentChapter + 1}`}
+        coverUrl={book?.coverUrl}
+        currentVoice={tts.voice}
+        voices={KOKORO_VOICES.map(v => ({ id: v.id, label: v.name }))}
+        onVoiceChange={(vid) => tts.changeVoice(vid as VoiceId)}
         autoHide={autoHidePlayer}
         forceHide={!isDesktop && !!panel}
         onPlay={handlePlay}

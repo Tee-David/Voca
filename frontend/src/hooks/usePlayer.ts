@@ -17,7 +17,7 @@ export function usePlayer() {
   const currentHowl = useRef<Howl | null>(null);
   const queueRef = useRef<(Blob | ArrayBuffer)[]>([]);
   const playingIdx = useRef(0);
-  const frameRef = useRef<number>();
+  const frameRef = useRef<number>(0);
   const onQueueEndRef = useRef<(() => void) | null>(null);
 
   const [state, setState] = useState<PlayerState>({

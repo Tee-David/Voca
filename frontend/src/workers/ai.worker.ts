@@ -9,7 +9,9 @@ import { pipeline, env } from "@huggingface/transformers";
 
 // Configure transformers.js
 // Use WASM backend
-env.backends.onnx.wasm.numThreads = 1;
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.numThreads = 1;
+}
 
 // Cache loaded pipelines
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
