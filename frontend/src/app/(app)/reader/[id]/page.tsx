@@ -16,6 +16,8 @@ import {
   getCachedAudio, putCachedAudio, hasCachedAudio,
   requestPersistentStorage,
 } from "@/lib/bookCache";
+import { compressAll } from "@/lib/audioCompress";
+import { prewarmChapter } from "@/lib/prewarmer";
 import { getFileUrl } from "@/lib/fileUrl";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
@@ -45,7 +47,21 @@ type BookmarkItem = {
 };
 
 type ReaderTheme = "light" | "dark" | "sepia";
-type Panel = "voice" | "chapters" | "settings" | "bookmarks" | null;
+type Panel = "voice" | "chapters" | "settings" | "bookmarks" | "search" | "pronunciations" | null;
+
+type Pronunciation = { from: string; to: string };
+const PRONUNCIATION_KEY = (bookId: string) => `voca:pron:${bookId}`;
+
+function applyPronunciations(text: string, rules: Pronunciation[]): string {
+  if (!rules.length) return text;
+  let out = text;
+  for (const r of rules) {
+    if (!r.from.trim()) continue;
+    const escaped = r.from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`\\b${escaped}\\b`, "gi"), r.to);
+  }
+  return out;
+}
 
 const THEME_STYLES: Record<ReaderTheme, { bg: string; text: string; label: string; icon: typeof Sun }> = {
   light: { bg: "bg-white", text: "text-gray-900", label: "Light", icon: Sun },
@@ -88,6 +104,12 @@ export default function ReaderPage() {
   const genCollectorRef = useRef<{ blobs: Blob[]; sentences: string[]; bookId: string; chapterIdx: number; voice: string; speed: number } | null>(null);
   const [cachedChaptersSet, setCachedChaptersSet] = useState<Set<number>>(new Set());
   const [downloadState, setDownloadState] = useState<{ active: boolean; chapterIdx: number; total: number } | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pronunciations, setPronunciations] = useState<Pronunciation[]>([]);
+  const [newPronFrom, setNewPronFrom] = useState("");
+  const [newPronTo, setNewPronTo] = useState("");
+  const prewarmAbortRef = useRef<AbortController | null>(null);
+  const prewarmedRef = useRef<Set<number>>(new Set());
 
   const tts = useKokoro();
   const player = usePlayer();
@@ -194,7 +216,10 @@ export default function ReaderPage() {
       // Persist collected audio to IndexedDB cache
       const c = genCollectorRef.current;
       if (c && c.blobs.length > 0) {
-        putCachedAudio(c.bookId, c.chapterIdx, c.voice, c.speed, c.blobs, c.sentences)
+        compressAll(c.blobs)
+          .then((compressed) =>
+            putCachedAudio(c.bookId, c.chapterIdx, c.voice, c.speed, compressed, c.sentences)
+          )
           .then(() => {
             setCachedChaptersSet((prev) => new Set(prev).add(c.chapterIdx));
           })
@@ -254,6 +279,53 @@ export default function ReaderPage() {
     return () => cancelAnimationFrame(wordAnimRef.current);
   }, [currentSentence, player.playing, player.duration, player.currentTime, chapters, currentChapter]);
 
+  // Pre-warm next chapter when ≥70% through current
+  useEffect(() => {
+    if (!book || !player.playing || player.duration <= 0) return;
+    const ratio = player.currentTime / player.duration;
+    const nextIdx = currentChapter + 1;
+    if (ratio < 0.7 || nextIdx >= chapters.length) return;
+    if (prewarmedRef.current.has(nextIdx)) return;
+    if (cachedChaptersSet.has(nextIdx)) return;
+
+    prewarmedRef.current.add(nextIdx);
+    const ctrl = new AbortController();
+    prewarmAbortRef.current?.abort();
+    prewarmAbortRef.current = ctrl;
+
+    prewarmChapter({
+      bookId: book.id,
+      chapterIdx: nextIdx,
+      text: chapters[nextIdx].text,
+      voice: tts.voice,
+      speed: tts.speed,
+      signal: ctrl.signal,
+    }).then((result) => {
+      if (result === "warmed" || result === "cached") {
+        setCachedChaptersSet((prev) => new Set(prev).add(nextIdx));
+      }
+    });
+  }, [player.currentTime, player.duration, player.playing, currentChapter, chapters, book, tts.voice, tts.speed, cachedChaptersSet]);
+
+  useEffect(() => {
+    return () => { prewarmAbortRef.current?.abort(); };
+  }, []);
+
+  // Load pronunciations per book
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const raw = localStorage.getItem(PRONUNCIATION_KEY(id));
+      if (raw) setPronunciations(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, [id]);
+
+  function savePronunciations(next: Pronunciation[]) {
+    setPronunciations(next);
+    if (!id) return;
+    try { localStorage.setItem(PRONUNCIATION_KEY(id), JSON.stringify(next)); } catch { /* ignore */ }
+  }
+
   // Sleep timer
   useEffect(() => {
     if (sleepTimer > 0) {
@@ -301,8 +373,9 @@ export default function ReaderPage() {
       bookId: book.id, chapterIdx: currentChapter,
       voice: tts.voice, speed: tts.speed,
     };
-    tts.generate(chapter.text, `${book.id}-ch${currentChapter}`);
-  }, [book, chapters, currentChapter, tts, player]);
+    const spokenText = applyPronunciations(chapter.text, pronunciations);
+    tts.generate(spokenText, `${book.id}-ch${currentChapter}`);
+  }, [book, chapters, currentChapter, tts, player, pronunciations]);
 
   // Auto-start generation once TTS becomes ready after user requested play
   useEffect(() => {
@@ -359,7 +432,8 @@ export default function ReaderPage() {
         });
         tts.onDone(async () => {
           if (blobs.length > 0) {
-            await putCachedAudio(book.id, i, tts.voice, tts.speed, blobs, sents);
+            const compressed = await compressAll(blobs);
+            await putCachedAudio(book.id, i, tts.voice, tts.speed, compressed, sents);
             setCachedChaptersSet((prev) => new Set(prev).add(i));
           }
           resolve();
@@ -392,7 +466,8 @@ export default function ReaderPage() {
       const fromText = sentences.slice(sentenceIdx).join(" ");
       player.resetQueue();
       player.setMeta(book.id, book.title, chapter.title);
-      tts.generate(fromText, `${book.id}-ch${currentChapter}-s${sentenceIdx}`);
+      const spokenText = applyPronunciations(fromText, pronunciations);
+      tts.generate(spokenText, `${book.id}-ch${currentChapter}-s${sentenceIdx}`);
       setCurrentSentence(sentenceIdx);
     }
   }
@@ -505,17 +580,17 @@ export default function ReaderPage() {
 
               {/* Drawer Grid Actions */}
               <div className="grid grid-cols-3 gap-3 mb-8">
-                <button className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
+                <button onClick={() => { togglePanel("search"); }} className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
                   <Search size={24} className="text-white/80" />
                   <span className="text-xs font-semibold">Search</span>
                 </button>
-                <button className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
+                <button onClick={() => togglePanel("voice")} className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
                   <MessageSquare size={24} className="text-white/80" />
-                  <span className="text-xs font-semibold">Voice Chat</span>
+                  <span className="text-xs font-semibold">Change Voice</span>
                 </button>
-                <button onClick={() => setSleepTimer(15)} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", sleepTimer > 0 ? "bg-primary text-primary-foreground" : "bg-white/5 hover:bg-white/10")}>
+                <button onClick={() => setSleepTimer(sleepTimer > 0 ? 0 : 15)} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", sleepTimer > 0 ? "bg-primary text-primary-foreground" : "bg-white/5 hover:bg-white/10")}>
                   <Timer size={24} className={sleepTimer > 0 ? "scale-110" : "text-white/80"} />
-                  <span className="text-xs font-semibold">Sleep timer</span>
+                  <span className="text-xs font-semibold">{sleepTimer > 0 ? `${Math.ceil(sleepRemaining / 60)}m left` : "Sleep timer"}</span>
                 </button>
               </div>
 
@@ -529,9 +604,14 @@ export default function ReaderPage() {
                   <Bookmark size={20} className="text-white/60" />
                   <span className="text-sm font-semibold">Bookmarks</span>
                 </button>
-                <button className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
+                <button onClick={() => togglePanel("pronunciations")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
                   <List size={20} className="text-white/60" />
-                  <span className="text-sm font-semibold">Pronunciations</span>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold">Pronunciations</span>
+                    {pronunciations.length > 0 && (
+                      <span className="text-[11px] text-white/40">{pronunciations.length} rule{pronunciations.length === 1 ? "" : "s"} active</span>
+                    )}
+                  </div>
                 </button>
                 <button
                   onClick={downloadForOffline}
@@ -615,6 +695,164 @@ export default function ReaderPage() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {panel === "search" && (
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Search size={16} className="text-muted-foreground" />
+              <input
+                autoFocus
+                placeholder="Search in book…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={cn("flex-1 bg-transparent outline-none text-sm", themeStyle.text)}
+              />
+              <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            {searchQuery.trim().length >= 2 && (
+              <div className="space-y-1">
+                {chapters.flatMap((ch, chIdx) => {
+                  const q = searchQuery.toLowerCase();
+                  const idx = ch.text.toLowerCase().indexOf(q);
+                  if (idx === -1) return [];
+                  const start = Math.max(0, idx - 40);
+                  const end = Math.min(ch.text.length, idx + q.length + 80);
+                  const snippet = ch.text.slice(start, end);
+                  return [(
+                    <button
+                      key={chIdx}
+                      onClick={() => { setCurrentChapter(chIdx); setPanel(null); }}
+                      className={cn("w-full text-left px-3 py-2.5 rounded-xl text-sm transition hover:bg-muted", themeStyle.text)}
+                    >
+                      <p className="text-xs text-muted-foreground font-semibold mb-1">
+                        Chapter {chIdx + 1} · {ch.title}
+                      </p>
+                      <p className="text-xs leading-relaxed">
+                        …{snippet.split(new RegExp(`(${searchQuery})`, "gi")).map((part, i) =>
+                          part.toLowerCase() === q
+                            ? <mark key={i} className="bg-primary/30 text-primary font-semibold">{part}</mark>
+                            : <span key={i}>{part}</span>
+                        )}…
+                      </p>
+                    </button>
+                  )];
+                })}
+                {chapters.every((ch) => !ch.text.toLowerCase().includes(searchQuery.toLowerCase())) && (
+                  <p className="text-sm text-muted-foreground text-center py-8">No matches</p>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {panel === "pronunciations" && (
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className={cn("font-bold", themeStyle.text)}>Pronunciations</h3>
+              <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              Replace words when reading aloud. Applied when you hit play next.
+            </p>
+
+            <div className="flex gap-2 mb-5">
+              <input
+                placeholder="From"
+                value={newPronFrom}
+                onChange={(e) => setNewPronFrom(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg bg-muted text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <input
+                placeholder="To"
+                value={newPronTo}
+                onChange={(e) => setNewPronTo(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg bg-muted text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button
+                onClick={() => {
+                  if (!newPronFrom.trim() || !newPronTo.trim()) return;
+                  savePronunciations([...pronunciations, { from: newPronFrom.trim(), to: newPronTo.trim() }]);
+                  setNewPronFrom(""); setNewPronTo("");
+                }}
+                className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
+              >
+                Add
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {pronunciations.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No custom pronunciations yet</p>
+              ) : pronunciations.map((p, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-muted/50">
+                  <span className={cn("text-sm font-semibold", themeStyle.text)}>{p.from}</span>
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <span className={cn("text-sm flex-1", themeStyle.text)}>{p.to}</span>
+                  <button
+                    onClick={() => savePronunciations(pronunciations.filter((_, j) => j !== i))}
+                    className="text-muted-foreground hover:text-destructive p-1"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {panel === "bookmarks" && (
+          <motion.div
+            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={cn("font-bold", themeStyle.text)}>Bookmarks</h3>
+              <div className="flex items-center gap-2">
+                <button onClick={addBookmark} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold">
+                  <BookmarkCheck size={14} /> Bookmark this
+                </button>
+                <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+              </div>
+            </div>
+            {bookmarks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-12">No bookmarks yet</p>
+            ) : (
+              <div className="space-y-1">
+                {bookmarks.map((bm) => (
+                  <div key={bm.id} className="group flex items-start gap-2 p-3 rounded-xl hover:bg-muted/50">
+                    <button
+                      onClick={() => { setCurrentChapter(bm.page); setPanel(null); }}
+                      className="flex-1 text-left"
+                    >
+                      <p className="text-xs text-muted-foreground font-semibold mb-1">
+                        Chapter {bm.page + 1}
+                      </p>
+                      <p className={cn("text-xs leading-relaxed line-clamp-3", themeStyle.text)}>{bm.text}</p>
+                    </button>
+                    <button onClick={() => removeBookmark(bm.id)} className="text-muted-foreground hover:text-destructive p-1 opacity-0 group-hover:opacity-100 transition">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {panel === "settings" && (
           <motion.div
             initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
@@ -676,20 +914,30 @@ export default function ReaderPage() {
                     const words = sentence.split(/(\s+)/);
                     let wordCounter = -1;
                     return (
-                      <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("cursor-pointer rounded transition-colors duration-200", isActiveSentence ? "bg-primary/20 xl:bg-primary/10" : "", themeStyle.text)}>
+                      <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("cursor-pointer rounded transition-colors duration-200", themeStyle.text)}>
                         {words.map((part, pIdx) => {
                           const isSpace = /^\s+$/.test(part);
                           if (!isSpace) wordCounter++;
                           const isActiveWord = !isSpace && wordCounter === currentWord;
                           return (
-                            <span key={pIdx} className={cn("transition-colors duration-150", isActiveWord ? "bg-primary text-primary-foreground rounded-sm px-0.5 py-0.5" : wordCounter <= currentWord && !isSpace ? "opacity-70" : "")}>{part}</span>
+                            <span
+                              key={pIdx}
+                              className={cn(
+                                "transition-colors duration-150",
+                                isActiveWord
+                                  ? "bg-[#22c55e] text-white rounded px-1 py-0.5"
+                                  : wordCounter < currentWord && !isSpace
+                                    ? "opacity-60"
+                                    : ""
+                              )}
+                            >{part}</span>
                           );
                         })}{" "}
                       </span>
                     );
                   }
                   return (
-                    <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("transition-colors duration-200 cursor-pointer hover:bg-primary/10 rounded", isActiveSentence ? "bg-[#273a21] text-white rounded px-0.5" : "", themeStyle.text)}>
+                    <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("transition-colors duration-200 cursor-pointer hover:bg-primary/10 rounded", isActiveSentence ? "bg-[#22c55e]/15 rounded px-0.5" : "", themeStyle.text)}>
                       {sentence}{" "}
                     </span>
                   );
@@ -702,63 +950,177 @@ export default function ReaderPage() {
         </div>
       </div>
 
-      {/* ─── Bottom controls ─── */}
+      {/* ─── Speechify-style bottom controls ─── */}
       <div className={cn(
-        "shrink-0 border-t backdrop-blur-sm z-30",
-        theme === "dark" ? "border-white/10 bg-[#1a1a2e]/95" : theme === "sepia" ? "border-[#d4c5a9] bg-[#f4ecd8]/95" : "border-border/50 bg-white/95"
+        "shrink-0 backdrop-blur-xl z-30 px-4 pt-3 pb-5",
+        theme === "dark" ? "bg-[#1a1a2e]/95 border-t border-white/5" :
+        theme === "sepia" ? "bg-[#f4ecd8]/95 border-t border-[#d4c5a9]/50" :
+        "bg-white/95 border-t border-border/40"
       )}>
-        <div className="flex items-center justify-between px-4 py-2.5 max-w-2xl mx-auto">
-          {/* Left: chapter nav */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => goChapter(-1)}
-              disabled={currentChapter === 0}
-              className="p-2 rounded-xl text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
+        <div className="max-w-2xl mx-auto space-y-3">
+          {/* Scrubber */}
+          <div className="flex items-center gap-3">
+            <span className={cn("text-[11px] font-semibold tabular-nums w-10 text-right", themeStyle.text)}>
+              {formatTime(player.currentTime)}
+            </span>
+            <div
+              className={cn(
+                "flex-1 h-1 rounded-full relative cursor-pointer group",
+                theme === "dark" ? "bg-white/10" : "bg-black/10"
+              )}
+              onClick={(e) => {
+                if (!player.duration) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = (e.clientX - rect.left) / rect.width;
+                player.seek(ratio * player.duration);
+              }}
             >
-              <SkipBack size={18} />
-            </button>
+              <div
+                className="h-full rounded-full bg-[#22c55e] group-hover:bg-[#16a34a] transition-colors relative"
+                style={{ width: `${player.duration > 0 ? (player.currentTime / player.duration) * 100 : 0}%` }}
+              >
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-[#22c55e] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" />
+              </div>
+            </div>
+            <span className={cn("text-[11px] font-semibold tabular-nums w-10 text-left opacity-60", themeStyle.text)}>
+              {formatTime(player.duration)}
+            </span>
           </div>
 
-          {/* Center: play + info */}
-          <div className="flex items-center gap-3">
-            <span className={cn("text-xs font-medium", themeStyle.text)}>
-              {currentChapter + 1} / {chapters.length}
-            </span>
+          {/* 5-button control row */}
+          <div className="flex items-center justify-around">
+            <button
+              onClick={() => setSleepTimer(sleepTimer > 0 ? 0 : 15)}
+              className={cn(
+                "w-11 h-11 rounded-full flex items-center justify-center transition",
+                sleepTimer > 0
+                  ? "bg-primary text-primary-foreground"
+                  : theme === "dark" ? "text-white/70 hover:bg-white/5" : "text-foreground/70 hover:bg-black/5"
+              )}
+              title="Sleep timer"
+            >
+              <Timer size={20} />
+            </button>
+
+            <button
+              onClick={() => goRelativeTime(-15)}
+              disabled={!player.duration}
+              className={cn(
+                "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
+                theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-black/5"
+              )}
+              title="Back 15s"
+            >
+              <div className="relative flex items-center justify-center">
+                <RotateCcw size={24} />
+                <span className="absolute text-[9px] font-black">15</span>
+              </div>
+            </button>
+
             <button
               onClick={handlePlay}
               disabled={tts.status === "loading" || !chapter}
-              className="w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/30 hover:bg-primary/90 disabled:opacity-50 transition"
+              className={cn(
+                "w-16 h-16 rounded-full flex items-center justify-center transition shadow-xl disabled:opacity-50",
+                theme === "dark"
+                  ? "bg-white text-black hover:scale-105"
+                  : "bg-foreground text-background hover:scale-105"
+              )}
             >
               {tts.status === "loading" ? (
-                <Loader2 size={22} className="animate-spin" />
+                <Loader2 size={26} className="animate-spin" />
               ) : player.playing ? (
-                <Pause size={22} />
+                <Pause size={26} strokeWidth={2.5} />
               ) : (
-                <Play size={22} className="ml-0.5" />
+                <Play size={26} strokeWidth={2.5} className="ml-1" />
               )}
             </button>
-            <span className="text-xs text-muted-foreground font-medium">
+
+            <button
+              onClick={() => goRelativeTime(30)}
+              disabled={!player.duration}
+              className={cn(
+                "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
+                theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-black/5"
+              )}
+              title="Forward 30s"
+            >
+              <div className="relative flex items-center justify-center">
+                <RotateCw size={24} />
+                <span className="absolute text-[9px] font-black">30</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                const ticks = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+                const next = ticks[(ticks.indexOf(tts.speed) + 1) % ticks.length] ?? 1.0;
+                tts.changeSpeed(next);
+              }}
+              className={cn(
+                "w-11 h-11 rounded-full flex items-center justify-center text-xs font-black transition tabular-nums",
+                theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-black/5"
+              )}
+              title="Speed"
+            >
               {tts.speed}×
-            </span>
+            </button>
           </div>
 
-          {/* Right: next chapter + bookmarks */}
-          <div className="flex items-center gap-1">
+          {/* Voice pill + chapters + bookmark */}
+          <div className="flex items-center justify-between gap-2">
             <button
-              onClick={() => togglePanel("bookmarks")}
+              onClick={() => togglePanel("voice")}
               className={cn(
-                "p-2 rounded-xl transition",
-                panel === "bookmarks" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                "flex items-center gap-2 px-3 py-1.5 rounded-full transition",
+                theme === "dark" ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"
               )}
             >
-              <Bookmark size={18} />
+              <Volume2 size={14} className={themeStyle.text} />
+              <span className={cn("text-xs font-semibold capitalize", themeStyle.text)}>
+                {tts.voice.replace(/^(af|am|bf|bm)_/, "")}
+              </span>
             </button>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => goChapter(-1)}
+                disabled={currentChapter === 0}
+                className={cn(
+                  "w-9 h-9 rounded-full flex items-center justify-center transition disabled:opacity-30",
+                  theme === "dark" ? "text-white/60 hover:bg-white/5" : "text-foreground/60 hover:bg-black/5"
+                )}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className={cn("text-[11px] font-semibold tabular-nums px-1", themeStyle.text)}>
+                {currentChapter + 1}/{chapters.length}
+              </span>
+              <button
+                onClick={() => goChapter(1)}
+                disabled={currentChapter === chapters.length - 1}
+                className={cn(
+                  "w-9 h-9 rounded-full flex items-center justify-center transition disabled:opacity-30",
+                  theme === "dark" ? "text-white/60 hover:bg-white/5" : "text-foreground/60 hover:bg-black/5"
+                )}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
             <button
-              onClick={() => goChapter(1)}
-              disabled={currentChapter === chapters.length - 1}
-              className="p-2 rounded-xl text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
+              onClick={() => togglePanel("chapters")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-full transition",
+                panel === "chapters"
+                  ? "bg-primary text-primary-foreground"
+                  : theme === "dark" ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"
+              )}
             >
-              <SkipForward size={18} />
+              <List size={14} className={panel === "chapters" ? "" : themeStyle.text} />
+              <span className={cn("text-xs font-semibold", panel === "chapters" ? "" : themeStyle.text)}>
+                Chapters
+              </span>
             </button>
           </div>
         </div>

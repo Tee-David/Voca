@@ -1,10 +1,17 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
+
+const withSerwist = withSerwistInit({
+  swSrc: "src/app/sw.ts",
+  swDest: "public/sw.js",
+  cacheOnNavigation: true,
+  reloadOnOnline: true,
+  disable: process.env.NODE_ENV === "development",
+});
 
 const nextConfig: NextConfig = {
-  // Turbopack handles WASM natively (no webpack config needed)
   turbopack: {},
 
-  // Required for kokoro-js (SharedArrayBuffer for ONNX WASM threads)
   async headers() {
     return [
       {
@@ -19,12 +26,9 @@ const nextConfig: NextConfig = {
 
   images: {
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "*.r2.dev",
-      },
+      { protocol: "https", hostname: "*.r2.dev" },
     ],
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

@@ -4,11 +4,16 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Headphones, Play, Pause, SkipBack, SkipForward,
-  ChevronDown, ChevronUp, List, Loader2, BookOpen, Volume2,
+  ChevronDown, ChevronUp, List, Loader2, BookOpen, Volume2, Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { getCachedChapters, cacheChapters } from "@/lib/bookCache";
+import {
+  getCachedChapters, cacheChapters,
+  getCachedAudio, putCachedAudio, hasCachedAudio,
+  requestPersistentStorage,
+} from "@/lib/bookCache";
+import { compressAll } from "@/lib/audioCompress";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { extractText, extractPdfCover, type Chapter } from "@/lib/extract";
@@ -45,6 +50,11 @@ export default function PlayerPage() {
   const initedRef = useRef(false);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const listenStartRef = useRef<number>(0);
+  const genCollectorRef = useRef<{
+    blobs: Blob[]; sentences: string[];
+    bookId: string; chapterIdx: number; voice: string; speed: number;
+  } | null>(null);
+  const [cachedChaptersSet, setCachedChaptersSet] = useState<Set<number>>(new Set());
 
   const tts = useKokoro();
   const player = usePlayer();
@@ -164,15 +174,44 @@ export default function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Wire TTS audio chunks into player queue
+  // Wire TTS audio chunks into player queue + write-through cache
   useEffect(() => {
     tts.onChunk((chunk) => {
       player.enqueueChunk(chunk.audio);
+      if (genCollectorRef.current) {
+        genCollectorRef.current.blobs.push(chunk.audio);
+        genCollectorRef.current.sentences.push(chunk.sentence);
+      }
     });
     tts.onDone(() => {
       setTtsLoading(false);
+      const c = genCollectorRef.current;
+      if (c && c.blobs.length > 0) {
+        compressAll(c.blobs)
+          .then((compressed) =>
+            putCachedAudio(c.bookId, c.chapterIdx, c.voice, c.speed, compressed, c.sentences)
+          )
+          .then(() => setCachedChaptersSet((prev) => new Set(prev).add(c.chapterIdx)))
+          .catch(() => {});
+      }
+      genCollectorRef.current = null;
     });
   }, [tts, player]);
+
+  // Check which chapters already have cached audio for this voice+speed
+  useEffect(() => {
+    if (!book || chapters.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = new Set<number>();
+      for (let i = 0; i < chapters.length; i++) {
+        const has = await hasCachedAudio(book.id, i, tts.voice, speed);
+        if (has) results.add(i);
+      }
+      if (!cancelled) setCachedChaptersSet(results);
+    })();
+    return () => { cancelled = true; };
+  }, [book, chapters.length, tts.voice, speed]);
 
   // Auto-advance to next chapter when player queue finishes
   useEffect(() => {
@@ -192,15 +231,30 @@ export default function PlayerPage() {
     const ch = chapters[idx];
     if (!ch || !book) return;
 
-    if (!initedRef.current) {
-      tts.initWorker();
-      initedRef.current = true;
-    }
+    requestPersistentStorage().catch(() => {});
     if (prefs?.defaultVoice) tts.changeVoice(prefs.defaultVoice as never);
     tts.changeSpeed(speed);
 
     player.resetQueue();
     player.setMeta(book.id, book.title, ch.title);
+
+    const hit = await getCachedAudio(book.id, idx, tts.voice, speed);
+    if (hit && hit.blobs.length > 0) {
+      hit.blobs.forEach((blob) => player.enqueueChunk(blob));
+      setTtsLoading(false);
+      return;
+    }
+
+    if (!initedRef.current) {
+      tts.initWorker();
+      initedRef.current = true;
+    }
+
+    genCollectorRef.current = {
+      blobs: [], sentences: [],
+      bookId: book.id, chapterIdx: idx,
+      voice: tts.voice, speed,
+    };
     setTtsLoading(true);
     tts.generate(ch.text.slice(0, 4000), `${book.id}-ch${idx}`);
   };
@@ -408,7 +462,10 @@ export default function PlayerPage() {
                       )}
                     >
                       <span className="truncate pr-2">{i + 1}. {ch.title}</span>
-                      {i === chapterIdx && player.playing && <Volume2 size={14} className="shrink-0" />}
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {cachedChaptersSet.has(i) && <Download size={12} className="text-primary/70" />}
+                        {i === chapterIdx && player.playing && <Volume2 size={14} />}
+                      </span>
                     </button>
                   ))
                 )}
