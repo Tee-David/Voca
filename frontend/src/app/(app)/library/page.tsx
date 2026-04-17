@@ -8,9 +8,12 @@ import {
   FileText, File, Loader2, X, Heart, Clock, Headphones,
   Bookmark, TrendingUp, Play,
   LayoutGrid, List as ListIcon, Pencil, ScanText,
+  ClipboardPaste, Plus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { BookCardV2 } from "@/components/library/BookCardV2";
+import { SortDropdown } from "@/components/library/SortDropdown";
 
 type Book = {
   id: string;
@@ -35,10 +38,29 @@ type Stats = {
   recentBooks: Book[];
 };
 
-type Tab = "all" | "favorites" | "pdf" | "epub" | "txt" | "docx";
+type TypeFilter = "all" | "favorites" | "pdf" | "epub" | "txt" | "docx";
+type SortKey = "recent" | "added" | "title" | "progress";
 type ViewMode = "grid" | "list";
 
 const VIEW_MODE_KEY = "voca:library:view";
+const SORT_KEY = "voca:library:sort";
+const TYPE_KEY = "voca:library:type";
+
+const TYPE_OPTIONS: { key: TypeFilter; label: string }[] = [
+  { key: "all", label: "All types" },
+  { key: "favorites", label: "Favorites" },
+  { key: "pdf", label: "PDF" },
+  { key: "epub", label: "EPUB" },
+  { key: "txt", label: "TXT" },
+  { key: "docx", label: "DOCX" },
+];
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "recent", label: "Recently opened" },
+  { key: "added", label: "Date added" },
+  { key: "title", label: "Title (A–Z)" },
+  { key: "progress", label: "Progress" },
+];
 
 const FILE_ICONS: Record<string, typeof FileText> = {
   pdf: FileText,
@@ -59,15 +81,20 @@ export default function LibraryPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<Tab>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [sort, setSort] = useState<SortKey>("recent");
   const [menuBookId, setMenuBookId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(VIEW_MODE_KEY) as ViewMode | null;
-      if (saved === "grid" || saved === "list") setViewMode(saved);
+      const v = localStorage.getItem(VIEW_MODE_KEY) as ViewMode | null;
+      if (v === "grid" || v === "list") setViewMode(v);
+      const s = localStorage.getItem(SORT_KEY) as SortKey | null;
+      if (s && SORT_OPTIONS.some((o) => o.key === s)) setSort(s);
+      const t = localStorage.getItem(TYPE_KEY) as TypeFilter | null;
+      if (t && TYPE_OPTIONS.some((o) => o.key === t)) setTypeFilter(t);
     } catch { /* ignore */ }
   }, []);
 
@@ -75,20 +102,28 @@ export default function LibraryPage() {
     setViewMode(m);
     try { localStorage.setItem(VIEW_MODE_KEY, m); } catch { /* ignore */ }
   };
+  const updateSort = (s: SortKey) => {
+    setSort(s);
+    try { localStorage.setItem(SORT_KEY, s); } catch { /* ignore */ }
+  };
+  const updateType = (t: TypeFilter) => {
+    setTypeFilter(t);
+    try { localStorage.setItem(TYPE_KEY, t); } catch { /* ignore */ }
+  };
 
   const fetchBooks = useCallback(async () => {
     try {
-      const filter = tab === "all" || tab === "favorites" ? "" : `?filter=${tab}`;
+      const filter = typeFilter === "all" || typeFilter === "favorites" ? "" : `?filter=${typeFilter}`;
       const res = await fetch(`/api/library${filter}`);
       if (res.ok) {
         let data: Book[] = await res.json();
-        if (tab === "favorites") data = data.filter((b) => b.isFavorite);
+        if (typeFilter === "favorites") data = data.filter((b) => b.isFavorite);
         setBooks(data);
       }
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [typeFilter]);
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
 
@@ -227,10 +262,27 @@ export default function LibraryPage() {
     await fetchBooks();
   }
 
-  const filtered = books.filter((b) =>
-    b.title.toLowerCase().includes(search.toLowerCase()) ||
-    (b.author?.toLowerCase().includes(search.toLowerCase()) ?? false)
-  );
+  const filtered = books
+    .filter((b) =>
+      b.title.toLowerCase().includes(search.toLowerCase()) ||
+      (b.author?.toLowerCase().includes(search.toLowerCase()) ?? false)
+    )
+    .sort((a, b) => {
+      switch (sort) {
+        case "title":
+          return a.title.localeCompare(b.title);
+        case "added":
+          return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+        case "progress":
+          return (b.progress?.percentComplete ?? 0) - (a.progress?.percentComplete ?? 0);
+        case "recent":
+        default: {
+          const aDate = a.lastOpenedAt ? new Date(a.lastOpenedAt).getTime() : new Date(a.uploadedAt).getTime();
+          const bDate = b.lastOpenedAt ? new Date(b.lastOpenedAt).getTime() : new Date(b.uploadedAt).getTime();
+          return bDate - aDate;
+        }
+      }
+    });
 
   const continueReading = books
     .filter((b) => b.progress && b.progress.percentComplete > 0 && b.progress.percentComplete < 100)
@@ -240,15 +292,6 @@ export default function LibraryPage() {
       return bDate - aDate;
     })
     .slice(0, 4);
-
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "favorites", label: "Favorites" },
-    { key: "pdf", label: "PDF" },
-    { key: "epub", label: "EPUB" },
-    { key: "txt", label: "TXT" },
-    { key: "docx", label: "DOCX" },
-  ];
 
   const firstName = session?.user?.name?.split(" ")[0] || "there";
 
@@ -260,27 +303,44 @@ export default function LibraryPage() {
       onDrop={handleDrop}
     >
       {/* ─── Hero / Welcome ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight truncate">
-            Welcome back, {firstName}
-          </h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            {books.length === 0
-              ? "Upload your first book to get started"
-              : `You have ${books.length} ${books.length === 1 ? "book" : "books"} in your library`}
-          </p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight truncate">
+          Welcome back, {firstName}
+        </h1>
+        <p className="text-sm sm:text-base text-muted-foreground mt-1">
+          {books.length === 0
+            ? "Upload your first book to get started"
+            : `You have ${books.length} ${books.length === 1 ? "book" : "books"} in your library`}
+        </p>
+      </div>
+
+      {/* ─── Action pills strip ─── */}
+      <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="self-start sm:self-auto shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition shadow-lg shadow-primary/25"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full text-xs sm:text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition shadow-md shadow-primary/25 active:scale-95"
         >
-          {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-          {uploading ? "Uploading…" : "Upload"}
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          {uploading ? "Uploading…" : "Upload File"}
+        </button>
+        <button
+          onClick={() => router.push("/import?mode=text")}
+          className="flex items-center gap-2 px-4 py-2 bg-muted text-foreground rounded-full text-xs sm:text-sm font-semibold hover:bg-muted/80 transition active:scale-95"
+        >
+          <ClipboardPaste size={14} />
+          Paste Text
+        </button>
+        <button
+          onClick={() => router.push("/import?mode=audiobook")}
+          className="flex items-center gap-2 px-4 py-2 bg-muted text-foreground rounded-full text-xs sm:text-sm font-semibold hover:bg-muted/80 transition active:scale-95"
+        >
+          <Headphones size={14} />
+          Create Audiobook
         </button>
         <input ref={fileRef} type="file" accept={ACCEPT} onChange={handleFileChange} className="hidden" />
       </div>
+
 
       {/* ─── Curved book gallery ─── */}
       {books.length > 0 && <CoverGallery books={books} onOpen={(id) => router.push(`/reader/${id}`)} />}
@@ -379,9 +439,32 @@ export default function LibraryPage() {
 
       {/* ─── Library Section ─── */}
       <div className="mb-4">
-        <h2 className="text-lg font-bold text-foreground mb-4">Your Library</h2>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-bold text-foreground">Your Library</h2>
+          <div className="shrink-0 flex items-center rounded-full bg-muted/50 p-0.5">
+            <button
+              aria-label="Grid view"
+              onClick={() => setView("grid")}
+              className={cn(
+                "p-1.5 rounded-full transition",
+                viewMode === "grid" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid size={14} />
+            </button>
+            <button
+              aria-label="List view"
+              onClick={() => setView("list")}
+              className={cn(
+                "p-1.5 rounded-full transition",
+                viewMode === "list" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <ListIcon size={14} />
+            </button>
+          </div>
+        </div>
 
-        {/* Search + filter tabs */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-md">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -398,45 +481,19 @@ export default function LibraryPage() {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1 flex-1 min-w-0">
-              {tabs.map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setTab(key)}
-                  className={cn(
-                    "px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition",
-                    tab === key
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="shrink-0 flex items-center rounded-full bg-muted/50 p-0.5">
-              <button
-                aria-label="Grid view"
-                onClick={() => setView("grid")}
-                className={cn(
-                  "p-1.5 rounded-full transition",
-                  viewMode === "grid" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <LayoutGrid size={14} />
-              </button>
-              <button
-                aria-label="List view"
-                onClick={() => setView("list")}
-                className={cn(
-                  "p-1.5 rounded-full transition",
-                  viewMode === "list" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <ListIcon size={14} />
-              </button>
-            </div>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <SortDropdown<TypeFilter>
+              label="Type"
+              value={typeFilter}
+              options={TYPE_OPTIONS}
+              onChange={updateType}
+            />
+            <SortDropdown<SortKey>
+              label="Sort"
+              value={sort}
+              options={SORT_OPTIONS}
+              onChange={updateSort}
+            />
           </div>
         </div>
       </div>
@@ -468,7 +525,7 @@ export default function LibraryPage() {
 
       {/* Empty state */}
       {!loading && filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
             <BookOpen size={32} className="text-primary" />
           </div>
@@ -483,10 +540,10 @@ export default function LibraryPage() {
           {!search && (
             <button
               onClick={() => fileRef.current?.click()}
-              className="mt-6 flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition shadow-lg shadow-primary/25"
+              className="mt-7 inline-flex items-center gap-2 px-7 py-4 bg-primary text-primary-foreground rounded-full text-base font-bold hover:bg-primary/90 transition shadow-xl shadow-primary/30 active:scale-95"
             >
-              <Upload size={16} />
-              Upload your first book
+              <Plus size={20} />
+              Add your first book
             </button>
           )}
         </div>
@@ -496,11 +553,9 @@ export default function LibraryPage() {
       {!loading && filtered.length > 0 && viewMode === "grid" && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {filtered.map((book) => (
-            <BookCard
+            <BookCardV2
               key={book.id}
               book={book}
-              menuOpen={menuBookId === book.id}
-              onMenuToggle={() => setMenuBookId(menuBookId === book.id ? null : book.id)}
               onFavorite={() => toggleFavorite(book.id, book.isFavorite)}
               onDelete={() => deleteBook(book.id)}
               onRename={() => renameBook(book.id, book.title)}
@@ -512,7 +567,7 @@ export default function LibraryPage() {
           {/* Upload more card */}
           <button
             onClick={() => fileRef.current?.click()}
-            className="aspect-[3/4] rounded-xl border-2 border-dashed border-border hover:border-primary/40 flex flex-col items-center justify-center gap-2 transition group"
+            className="aspect-[2/3] rounded-lg border-2 border-dashed border-border hover:border-primary/40 flex flex-col items-center justify-center gap-2 transition group"
           >
             <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-primary/10 flex items-center justify-center transition">
               <Upload size={18} className="text-muted-foreground group-hover:text-primary transition" />
@@ -635,113 +690,6 @@ function CoverGallery({ books, onOpen }: { books: Book[]; onOpen: (id: string) =
         })}
       </div>
     </div>
-  );
-}
-
-function BookCard({
-  book,
-  menuOpen,
-  onMenuToggle,
-  onFavorite,
-  onDelete,
-  onRename,
-  onOcr,
-  onOpen,
-}: {
-  book: Book;
-  menuOpen: boolean;
-  onMenuToggle: () => void;
-  onFavorite: () => void;
-  onDelete: () => void;
-  onRename: () => void;
-  onOcr: () => void;
-  onOpen: () => void;
-}) {
-  const Icon = FILE_ICONS[book.fileType] || FileText;
-  const percent = book.progress?.percentComplete ?? 0;
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="group relative"
-    >
-      {/* Cover */}
-      <button
-        onClick={onOpen}
-        className="w-full aspect-[3/4] rounded-xl overflow-hidden relative shadow-md hover:shadow-xl transition-shadow"
-      >
-        {book.coverUrl ? (
-          <img
-            src={book.coverUrl}
-            alt={book.title}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div
-            className="w-full h-full flex flex-col items-center justify-center p-3"
-            style={{ backgroundColor: book.coverColor || "#4338CA" }}
-          >
-            <Icon size={28} className="text-white/80 mb-2" />
-            <p className="text-white/90 text-[11px] font-bold text-center leading-tight line-clamp-3">
-              {book.title}
-            </p>
-            <span className="text-white/50 text-[9px] mt-1.5 uppercase font-bold tracking-wider">
-              {book.fileType}
-            </span>
-          </div>
-        )}
-
-        {/* Progress bar */}
-        {percent > 0 && (
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-black/20">
-            <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
-          </div>
-        )}
-
-        {/* Favorite badge */}
-        {book.isFavorite && (
-          <div className="absolute top-2 right-2 bg-white/90 dark:bg-black/70 rounded-full p-1">
-            <Heart size={10} className="text-red-500 fill-red-500" />
-          </div>
-        )}
-
-        {/* Percent badge */}
-        {percent > 0 && percent < 100 && (
-          <div className="absolute top-2 left-2 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
-            {Math.round(percent)}%
-          </div>
-        )}
-      </button>
-
-      {/* Title + menu */}
-      <div className="flex items-start justify-between mt-2 gap-1">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-foreground truncate">{book.title}</p>
-          {book.author && (
-            <p className="text-[10px] text-muted-foreground truncate">{book.author}</p>
-          )}
-        </div>
-        <div className="relative">
-          <button
-            aria-label="Book options"
-            onClick={onMenuToggle}
-            className="p-1.5 -mr-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition"
-          >
-            <MoreVertical size={14} />
-          </button>
-          <BookMenu
-            open={menuOpen}
-            book={book}
-            onFavorite={onFavorite}
-            onDelete={onDelete}
-            onRename={onRename}
-            onOcr={onOcr}
-          />
-        </div>
-      </div>
-    </motion.div>
   );
 }
 

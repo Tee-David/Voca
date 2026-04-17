@@ -118,16 +118,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped / deferre
 
 ## Phase 5 — Library redesign
 
-- [ ] Header strip with `[Upload File] [Paste Text] [Create Audiobook]` action pills
-- [ ] Right-aligned `Type ▾ · Date Added ▾` sort dropdowns (keep existing grid/list toggle)
-- [ ] Dismissible promo card slot at top (localStorage-persist dismissal)
-- [ ] First promo: "Turn any book into a custom audiobook"
-- [ ] Book card v2 component [components/library/BookCardV2.tsx](frontend/src/components/library/BookCardV2.tsx)
-  - [ ] 2:3 cover with `rounded-lg` + card shadow
-  - [ ] Title (2 lines max, truncate)
-  - [ ] Metadata row: `☁ 5% · Feb 28 · pdf` (filled cloud = offline-cached)
-  - [ ] Long-press / right-click → actions bottom sheet
-- [ ] Empty state: big purple `+ Add your first book` pill
+- [x] Header strip with `[Upload File] [Paste Text] [Create Audiobook]` action pills
+- [x] Right-aligned `Type ▾ · Date Added ▾` sort dropdowns (keep existing grid/list toggle)
+- [-] Dismissible promo card slot at top — user opted out ("i don't want a promo card in my app")
+- [-] First promo: "Turn any book into a custom audiobook" — dropped with promo slot
+- [x] Book card v2 component [components/library/BookCardV2.tsx](frontend/src/components/library/BookCardV2.tsx)
+  - [x] 2:3 cover with `rounded-lg` + card shadow
+  - [x] Title (2 lines max, truncate)
+  - [x] Metadata row: `☁ 5% · Feb 28 · pdf` (filled cloud = offline-cached; offline state placeholder until Phase 8)
+  - [x] Long-press / right-click → actions bottom sheet
+- [x] Empty state: big purple `+ Add your first book` pill
 
 ## Phase 6 — Navigation shell
 
