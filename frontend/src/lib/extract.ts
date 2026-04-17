@@ -97,9 +97,13 @@ async function extractPdf(
   }
 
   // If we have an outline, use it for chapter boundaries
-  if (outline && outline.length > 1) {
-    const chapterPages = await resolveOutlinePages(pdf, outline);
-    return buildChaptersFromOutline(chapterPages, pageTexts, pdf.numPages);
+  if (outline && outline.length > 0) {
+    const chapterPages = dedupeAndSortOutline(await resolveOutlinePages(pdf, outline));
+    if (chapterPages.length > 0) {
+      const fromOutline = buildChaptersFromOutline(chapterPages, pageTexts, pdf.numPages);
+      if (fromOutline.length > 1) return fromOutline;
+      // Outline collapsed to a single chapter — try heuristic for finer structure.
+    }
   }
 
   // Fallback: heuristic chapter detection by looking for heading-like patterns
@@ -108,6 +112,17 @@ async function extractPdf(
 
   // Final fallback: group every ~5 pages
   return groupPages(pageTexts, 5);
+}
+
+function dedupeAndSortOutline(pages: ChapterPage[]): ChapterPage[] {
+  const seen = new Set<number>();
+  const out: ChapterPage[] = [];
+  for (const p of [...pages].sort((a, b) => a.pageIndex - b.pageIndex)) {
+    if (seen.has(p.pageIndex)) continue;
+    seen.add(p.pageIndex);
+    out.push({ title: p.title.trim() || `Page ${p.pageIndex + 1}`, pageIndex: p.pageIndex });
+  }
+  return out;
 }
 
 async function runOcrOnPages(
@@ -217,19 +232,28 @@ function detectChaptersHeuristically(pageTexts: string[]): Chapter[] {
   let currentTitle = "Beginning";
   let currentText = "";
 
-  const chapterPattern = /^(chapter|part|section|book)\s+(\d+|[ivxlcdm]+)/i;
+  // Accept "Chapter 1", "CHAPTER I", "Part One", "Section 2", etc., anywhere in the first ~5 lines.
+  const chapterPattern = /^\s*(chapter|part|section|book)\s+(\d+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b[:.\s-]*(.{0,80})?$/i;
 
   for (let i = 0; i < pageTexts.length; i++) {
     const text = pageTexts[i];
     if (!text) continue;
 
-    const firstLine = text.split(/[.\n]/)[0]?.trim() ?? "";
-    if (chapterPattern.test(firstLine) && currentText.length > 200) {
+    const lines = text.split(/\n+/).slice(0, 5).map((l) => l.trim()).filter(Boolean);
+    let heading: string | null = null;
+    for (const line of lines) {
+      if (chapterPattern.test(line) && line.length <= 120) {
+        heading = line;
+        break;
+      }
+    }
+
+    if (heading && currentText.length > 400) {
       chapters.push({ title: currentTitle, text: currentText.trim() });
-      currentTitle = firstLine.slice(0, 80);
+      currentTitle = heading.slice(0, 80);
       currentText = text;
     } else {
-      currentText += "\n\n" + text;
+      currentText += (currentText ? "\n\n" : "") + text;
     }
   }
 
