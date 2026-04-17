@@ -15,7 +15,10 @@ interface SheetEntry {
   id: string;
   title: string;
   variant: Variant;
-  content: ReactNode;
+  /** Sheet body. Omit + set `external: true` to let the caller render inline (state stays live). */
+  content?: ReactNode;
+  /** When true, sheet-stack tracks open/close + esc/back-stack but doesn't render a surface. */
+  external?: boolean;
   surfaceClassName?: string;
   onClose?: () => void;
 }
@@ -105,9 +108,10 @@ function SheetHost({
   if (!mounted) return null;
   if (typeof document === "undefined") return null;
 
+  const renderable = stack.filter((e) => !e.external);
   return createPortal(
     <AnimatePresence>
-      {stack.length > 0 && (
+      {renderable.length > 0 && (
         <>
           <motion.div
             key="sheet-backdrop"
@@ -118,12 +122,12 @@ function SheetHost({
             onClick={onClose}
             className="fixed inset-0 z-[1000] bg-black/30 backdrop-blur-[2px]"
           />
-          {stack.map((entry, idx) => (
+          {renderable.map((entry, idx) => (
             <SheetSurface
               key={entry.id}
               entry={entry}
-              isTop={idx === stack.length - 1}
-              canBack={stack.length > 1}
+              isTop={idx === renderable.length - 1}
+              canBack={renderable.length > 1}
               onBack={onBack}
               onCloseAll={onClose}
             />

@@ -56,14 +56,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped / deferre
 - [x] Back-stack navigation (open sub-sheet → back to parent)
 - [x] Swipe-to-dismiss on mobile (drag-y for bottom, drag-x for right)
 - [x] Spring animation using `--ease-pop` / `--ease-sheet`
-- [ ] Migrate existing reader panels to the new stack — paired with Phase 3 redesigns:
-  - [ ] Appearance (currently `panel === "settings"`)
-  - [ ] Chapters/TOC
-  - [ ] Voices
-  - [ ] Speed
-  - [ ] Bookmarks
-  - [ ] Pronunciations
-  - [ ] Search
+- [x] Migrate existing reader panels to the new stack — `panel` state replaced with `sheets.topId`; triggers flow through `sheets.open({ external: true })` so chrome animations stay co-located with live state. ESC + back-stack now powered by sheet-stack:
+  - [x] Appearance / Listening (combined `settings`)
+  - [x] Chapters/TOC (left variant)
+  - [x] Voices (bottom)
+  - [x] Speed (inside Voices sheet)
+  - [x] Bookmarks (right)
+  - [x] Pronunciations (bottom)
+  - [x] Search (bottom)
+  - [x] Download / AI (bottom)
 
 ## Phase 3 — Settings sheet content redesign
 

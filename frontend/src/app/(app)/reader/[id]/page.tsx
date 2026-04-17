@@ -28,6 +28,7 @@ import { AudiobookExport } from "@/components/reader/AudiobookExport";
 import { PlayerPill } from "@/components/reader/PlayerPill";
 import { TitleActionCard } from "@/components/reader/TitleActionCard";
 import { AiRail, type AiAction } from "@/components/reader/AiRail";
+import { SheetStackProvider, useSheetStack } from "@/components/ui/sheet-stack";
 import { cn } from "@/lib/utils";
 
 type Book = {
@@ -88,8 +89,17 @@ const FONT_FAMILIES = [
 ];
 
 export default function ReaderPage() {
+  return (
+    <SheetStackProvider>
+      <ReaderPageInner />
+    </SheetStackProvider>
+  );
+}
+
+function ReaderPageInner() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const sheets = useSheetStack();
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -98,7 +108,7 @@ export default function ReaderPage() {
   const [extracting, setExtracting] = useState(false);
   const [extractStage, setExtractStage] = useState<{ stage: string; value: number } | null>(null);
   const [error, setError] = useState("");
-  const [panel, setPanel] = useState<Panel>(null);
+  const panel: Panel = (sheets.topId as Panel) ?? null;
   const [fontSize, setFontSize] = useState(18);
   const [lineHeight, setLineHeight] = useState(1.8);
   const [fontFamily, setFontFamily] = useState(FONT_FAMILIES[0].value);
@@ -140,12 +150,31 @@ export default function ReaderPage() {
   const tts = useKokoro();
   const player = usePlayer();
 
-  const togglePanel = (p: Panel) => {
-    setPanel((prev) => (prev === p ? null : p));
+  const PANEL_META: Record<NonNullable<Panel>, { title: string; variant: "bottom" | "left" | "right" | "fullscreen" }> = {
+    voice: { title: "Voice & Speed", variant: "bottom" },
+    chapters: { title: "Navigator", variant: "left" },
+    settings: { title: "Reader settings", variant: "bottom" },
+    bookmarks: { title: "Bookmarks", variant: "right" },
+    search: { title: "Search", variant: "bottom" },
+    pronunciations: { title: "Pronunciations", variant: "bottom" },
+    download: { title: "Export audiobook", variant: "bottom" },
+    ai: { title: "Voca AI", variant: "bottom" },
+  };
+
+  const setPanel = useCallback((p: Panel) => {
+    if (p === null) { sheets.closeAll(); return; }
+    const meta = PANEL_META[p];
+    sheets.open({ id: p, title: meta.title, variant: meta.variant, external: true });
+  }, [sheets]);
+
+  const togglePanel = useCallback((p: NonNullable<Panel>) => {
+    if (sheets.isOpen(p)) { sheets.closeAll(); return; }
     if (p === "voice" && (tts.status === "idle" || tts.status === "error")) {
       tts.initWorker();
     }
-  };
+    const meta = PANEL_META[p];
+    sheets.open({ id: p, title: meta.title, variant: meta.variant, external: true });
+  }, [sheets, tts]);
 
   const saveProgress = useCallback(
     async (page: number, total: number) => {
