@@ -348,3 +348,52 @@
 }
 .anim-sheet-in { animation: voca-sheet-in 260ms var(--ease-sheet) both; }
 .anim-pop-in   { animation: voca-pop-in 200ms var(--ease-pop) both; }
+
+/* ── pdfjs TextLayer (Phase 7) ── */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.3;
+  line-height: 1;
+  text-align: initial;
+  pointer-events: auto;
+}
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+  cursor: text;
+}
+.textLayer span::selection {
+  background: oklch(0.60 0.24 268 / 35%);
+  color: transparent;
+}
+.textLayer .highlight {
+  margin: -1px;
+  padding: 1px;
+  border-radius: 4px;
+}
+.textLayer .highlight.active {
+  background-color: oklch(0.60 0.24 268 / 30%);
+}
+
+/* ── Skeleton shimmer animation ── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.animate-skeleton {
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+/* ── Page transition (fade + slide) ── */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-transition {
+  animation: page-enter 300ms var(--ease-sheet) both;
+}

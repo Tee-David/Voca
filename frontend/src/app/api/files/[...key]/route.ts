@@ -84,6 +84,12 @@ export async function PUT(
       return NextResponse.json({ error: "Key is required" }, { status: 400 });
     }
 
+    // Validate the key belongs to this user (path format: pdfs/<userId>/...)
+    const expectedPrefix = `pdfs/${session.user.id}/`;
+    if (!objectKey.startsWith(expectedPrefix)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const bodyBuffer = await req.arrayBuffer();
     const BUCKET = process.env.R2_BUCKET_NAME!;
     

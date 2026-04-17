@@ -6,7 +6,7 @@ let currentSpeed = 1.0;
 
 type MsgIn =
   | { type: "init"; voice?: string; speed?: number }
-  | { type: "generate"; text: string; id: string }
+  | { type: "generate"; text?: string; items?: { text: string; voice?: string }[]; id: string }
   | { type: "setVoice"; voice: string }
   | { type: "setSpeed"; speed: number }
   | { type: "sample"; voice: string; text: string };
@@ -80,13 +80,32 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
     try {
       self.postMessage({ type: "generating", id: msg.id });
 
-      const sentences = splitSentences(msg.text);
-      for (let i = 0; i < sentences.length; i++) {
-        const sentence = sentences[i].trim();
-        if (!sentence) continue;
+      let totalSentences = 0;
+      const chunksToProcess: { sentence: string; voice: string }[] = [];
 
-        const audio = await pipeline.generate(sentence, {
-          voice: currentVoice,
+      if (msg.items && msg.items.length > 0) {
+        for (const item of msg.items) {
+          const sentences = splitSentences(item.text);
+          for (const sentence of sentences) {
+             const st = sentence.trim();
+             if (st) chunksToProcess.push({ sentence: st, voice: item.voice || currentVoice });
+          }
+        }
+      } else if (msg.text) {
+        const sentences = splitSentences(msg.text);
+        for (const sentence of sentences) {
+           const st = sentence.trim();
+           if (st) chunksToProcess.push({ sentence: st, voice: currentVoice });
+        }
+      }
+      
+      totalSentences = chunksToProcess.length;
+
+      for (let i = 0; i < totalSentences; i++) {
+        const chunk = chunksToProcess[i];
+
+        const audio = await pipeline.generate(chunk.sentence, {
+          voice: chunk.voice,
           speed: currentSpeed,
         });
 
@@ -95,8 +114,8 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
           type: "audio",
           id: msg.id,
           index: i,
-          total: sentences.length,
-          sentence,
+          total: totalSentences,
+          sentence: chunk.sentence,
           audio: blob,
         });
       }

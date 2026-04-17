@@ -26,9 +26,13 @@ interface VocaDB extends DBSchema {
     value: AudioCacheEntry;
     indexes: { "by-book": string; "by-lastPlayed": number };
   };
+  embeddings: {
+    key: string; // bookId
+    value: { bookId: string; paragraphs: { text: string; vector: number[] }[] };
+  };
 }
 
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500MB soft cap
 
 let dbPromise: Promise<IDBPDatabase<VocaDB>> | null = null;
@@ -45,6 +49,9 @@ function getDB() {
           const store = db.createObjectStore("audioCache", { keyPath: "key" });
           store.createIndex("by-book", "bookId");
           store.createIndex("by-lastPlayed", "lastPlayedAt");
+        }
+        if (!db.objectStoreNames.contains("embeddings")) {
+          db.createObjectStore("embeddings", { keyPath: "bookId" });
         }
       },
     });
@@ -196,4 +203,24 @@ export async function requestPersistentStorage(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ─── Embeddings cache ───────────────────────────────────────────────────────
+
+export async function getCachedEmbeddings(
+  bookId: string
+): Promise<{ text: string; vector: number[] }[] | null> {
+  const db = await getDB();
+  if (!db) return null;
+  const row = await db.get("embeddings", bookId);
+  return row?.paragraphs ?? null;
+}
+
+export async function putCachedEmbeddings(
+  bookId: string,
+  paragraphs: { text: string; vector: number[] }[]
+) {
+  const db = await getDB();
+  if (!db) return;
+  await db.put("embeddings", { bookId, paragraphs });
 }

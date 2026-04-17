@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { BookCardV2 } from "@/components/library/BookCardV2";
 import { SortDropdown } from "@/components/library/SortDropdown";
+import { LibraryGridSkeleton, BookRowSkeleton, StatsSkeleton } from "@/components/ui/Skeleton";
 
 type Book = {
   id: string;
@@ -297,7 +298,7 @@ export default function LibraryPage() {
 
   return (
     <div
-      className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6"
+      className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 page-transition"
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
@@ -346,7 +347,9 @@ export default function LibraryPage() {
       {books.length > 0 && <CoverGallery books={books} onOpen={(id) => router.push(`/reader/${id}`)} />}
 
       {/* ─── Stats Cards ─── */}
-      {stats && (
+      {!stats && loading ? (
+        <div className="mb-8"><StatsSkeleton /></div>
+      ) : stats ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
           {[
             { icon: BookOpen, label: "Books", value: stats.bookCount, color: "text-primary bg-primary/10" },
@@ -365,7 +368,7 @@ export default function LibraryPage() {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* ─── Continue Reading ─── */}
       {continueReading.length > 0 && (
@@ -517,9 +520,14 @@ export default function LibraryPage() {
       </AnimatePresence>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 size={24} className="animate-spin text-primary" />
+      {loading && viewMode === "grid" && (
+        <LibraryGridSkeleton count={10} />
+      )}
+      {loading && viewMode === "list" && (
+        <div className="rounded-2xl border border-border bg-card">
+          {Array.from({ length: 5 }).map((_, i) => (
+             <BookRowSkeleton key={i} />
+          ))}
         </div>
       )}
 
@@ -581,7 +589,7 @@ export default function LibraryPage() {
 
       {/* Book list */}
       {!loading && filtered.length > 0 && viewMode === "list" && (
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="rounded-2xl border border-border bg-card">
           {filtered.map((book, i) => (
             <BookRow
               key={book.id}
@@ -769,7 +777,7 @@ function BookRow({
   const sizeMb = book.fileSize ? (book.fileSize / 1024 / 1024).toFixed(1) : null;
 
   return (
-    <div className={cn("relative flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 hover:bg-accent/40 transition", !first && "border-t border-border")}>
+    <div className={cn("relative flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 hover:bg-accent/40 transition", !first && "border-t border-border", first && "rounded-t-2xl", "last:rounded-b-2xl")}>
       <button onClick={onOpen} className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0 text-left">
         <div
           className="w-10 h-14 sm:w-12 sm:h-16 rounded-lg overflow-hidden shrink-0 flex items-center justify-center shadow-sm"

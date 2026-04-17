@@ -101,9 +101,9 @@ export function useKokoro() {
   }, []);
 
   const generate = useCallback(
-    (text: string, id: string) => {
+    (opts: { text?: string; items?: { text: string; voice?: string }[] }, id: string) => {
       if (!workerRef.current) initWorker();
-      workerRef.current?.postMessage({ type: "generate", text, id });
+      workerRef.current?.postMessage({ type: "generate", text: opts.text, items: opts.items, id });
     },
     [initWorker]
   );

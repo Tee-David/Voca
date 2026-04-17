@@ -20,16 +20,25 @@ import {
 import { compressAll } from "@/lib/audioCompress";
 import { prewarmChapter } from "@/lib/prewarmer";
 import { getFileUrl } from "@/lib/fileUrl";
+import { buildSearchIndex, searchBook, clearSearchIndex, type SearchHit } from "@/lib/bookSearch";
+import { parseSSML, ssmlToPlainText, stripSSML, hasSSML } from "@/lib/ssml";
+import { haptic } from "@/lib/haptics";
 import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
 import { SpeedControl } from "@/components/reader/SpeedControl";
 import { AudiobookExport } from "@/components/reader/AudiobookExport";
 import { PlayerPill } from "@/components/reader/PlayerPill";
+import { ReaderContentSkeleton } from "@/components/ui/Skeleton";
 import { TitleActionCard } from "@/components/reader/TitleActionCard";
 import { AiRail, type AiAction } from "@/components/reader/AiRail";
 import { WordPopover } from "@/components/reader/WordPopover";
+import { PageView } from "@/components/reader/PageView";
+import { AIPanel } from "@/components/reader/AIPanel";
+import { RecapBanner } from "@/components/reader/RecapBanner";
 import { SheetStackProvider, useSheetStack } from "@/components/ui/sheet-stack";
+import { getCachedEmbeddings, putCachedEmbeddings } from "@/lib/bookCache";
+import { extractParagraphChunks } from "@/lib/embeddings";
 import { cn } from "@/lib/utils";
 
 type Book = {
@@ -132,7 +141,9 @@ function ReaderPageInner() {
   const [deleting, setDeleting] = useState(false);
   const [downloadState, setDownloadState] = useState<{ active: boolean; chapterIdx: number; total: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [viewMode, setViewMode] = useState<"text" | "pdf">("text");
+  const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const [pronunciations, setPronunciations] = useState<Pronunciation[]>([]);
   const [newPronFrom, setNewPronFrom] = useState("");
   const [newPronTo, setNewPronTo] = useState("");
@@ -142,11 +153,14 @@ function ReaderPageInner() {
   const [topHidden, setTopHidden] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [aiAction, setAiAction] = useState<AiAction | null>(null);
+  const [showRecap, setShowRecap] = useState(false);
+  const bgEmbedWorkerRef = useRef<Worker | null>(null);
   const topIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cursorColor, setCursorColor] = useState<string>("purple");
   const [highlightSentence, setHighlightSentence] = useState(true);
   const [autoHidePlayer, setAutoHidePlayer] = useState(true);
   const [autoPlayAudio, setAutoPlayAudio] = useState(false);
+  const [podcastMode, setPodcastMode] = useState(false);
   const [wordPopover, setWordPopover] = useState<{ word: string; sentence: string; anchor: { x: number; y: number } } | null>(null);
   const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -217,8 +231,11 @@ function ReaderPageInner() {
       const cached = await getCachedChapters(data.id);
       if (cached && cached.length > 0) {
         setChapters(cached);
+        buildSearchIndex(data.id, cached);
         const startPage = data.progress?.currentPage ?? 0;
         setCurrentChapter(Math.min(startPage, cached.length - 1));
+        if (startPage > 0) setShowRecap(true);
+        triggerBackgroundEmbed(data.id, cached);
       } else {
         setExtracting(true);
         try {
@@ -228,9 +245,12 @@ function ReaderPageInner() {
           );
           if (extracted.length === 0) throw new Error("No text found in document");
           setChapters(extracted);
+          buildSearchIndex(data.id, extracted);
           await cacheChapters(data.id, extracted);
           const startPage = data.progress?.currentPage ?? 0;
           setCurrentChapter(Math.min(startPage, extracted.length - 1));
+          if (startPage > 0) setShowRecap(true);
+          triggerBackgroundEmbed(data.id, extracted);
 
           // Suggest server-side OCR when the PDF is text-thin (likely scanned).
           // Heuristic: less than ~200 chars per page averaged, and not already OCR'd.
@@ -261,11 +281,14 @@ function ReaderPageInner() {
         }
       }
 
-      if (!data.coverUrl && data.fileType === "pdf") {
+      if (data.fileType === "pdf") {
         getFileUrl(data.r2Key)
-          .then((fileUrl) => extractPdfCover(fileUrl))
+          .then((fileUrl) => {
+            setPdfFileUrl(fileUrl);
+            return extractPdfCover(fileUrl);
+          })
           .then((coverUrl) => {
-            if (coverUrl) {
+            if (coverUrl && !data.coverUrl) {
               setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
               fetch(`/api/library/${data.id}/cover`, {
                 method: "POST",
@@ -283,7 +306,14 @@ function ReaderPageInner() {
     }
   }, [id]);
 
-  useEffect(() => { loadBook(); }, [loadBook]);
+  useEffect(() => { 
+    loadBook().then(() => {
+      // Prewarm TTS worker (Phase 12a)
+      if (tts.status === "idle") {
+        tts.initWorker();
+      }
+    }); 
+  }, [loadBook, tts]);
 
   const runOcr = useCallback(async () => {
     if (!book || ocrBusy) return;
@@ -603,8 +633,24 @@ function ReaderPageInner() {
       voice: tts.voice, speed: tts.speed,
     };
     const spokenText = applyPronunciations(chapter.text, pronunciations);
-    tts.generate(spokenText, `${book.id}-ch${currentChapter}`);
-  }, [book, chapters, currentChapter, tts, player, pronunciations]);
+    setTimeout(() => {
+      // Pre-process podcast mode (mix primary and secondary voices)
+      const primaryVoice = tts.voice;
+      const secondaryVoice = primaryVoice.startsWith("af_") ? "am_michael" : "af_bella";
+
+      if (podcastMode) {
+         // Create items object
+         const paragraphBlocks = stripSSML(spokenText).split(/(?:\r?\n){2,}/);
+         const mixItems = paragraphBlocks.map((block, idx) => ({
+             text: block,
+             voice: idx % 2 === 0 ? primaryVoice : secondaryVoice
+         }));
+         tts.generate({ items: mixItems }, `${book.id}-ch${currentChapter}`);
+      } else {
+         tts.generate({ text: ssmlToPlainText(parseSSML(spokenText)) }, `${book.id}-ch${currentChapter}`);
+      }
+    }, 100);
+  }, [book, chapters, currentChapter, tts, player, pronunciations, podcastMode]);
 
   // Auto-start generation once TTS becomes ready after user requested play
   useEffect(() => {
@@ -619,10 +665,12 @@ function ReaderPageInner() {
     if (!chapter || !book) return;
 
     if (player.playing) {
+      haptic("medium");
       player.pause();
       return;
     }
 
+    haptic("light");
     if (tts.status === "idle" || tts.status === "error") {
       pendingPlayRef.current = true;
       tts.initWorker();
@@ -667,7 +715,19 @@ function ReaderPageInner() {
           }
           resolve();
         });
-        tts.generate(chapters[i].text, `dl-${book.id}-ch${i}`);
+        const primaryVoice = tts.voice;
+        const secondaryVoice = primaryVoice.startsWith("af_") ? "am_michael" : "af_bella";
+  
+        if (podcastMode) {
+           const paragraphBlocks = stripSSML(chapters[i].text).split(/(?:\r?\n){2,}/);
+           const mixItems = paragraphBlocks.map((block, idx) => ({
+               text: block,
+               voice: idx % 2 === 0 ? primaryVoice : secondaryVoice
+           }));
+           tts.generate({ items: mixItems }, `dl-${book.id}-ch${i}`);
+        } else {
+           tts.generate({ text: ssmlToPlainText(parseSSML(chapters[i].text)) }, `dl-${book.id}-ch${i}`);
+        }
       });
     }
     setDownloadState(null);
@@ -724,7 +784,8 @@ function ReaderPageInner() {
       player.resetQueue();
       player.setMeta(book.id, book.title, chapter.title);
       const spokenText = applyPronunciations(fromText, pronunciations);
-      tts.generate(spokenText, `${book.id}-ch${currentChapter}-s${sentenceIdx}`);
+      // Force single primary voice for jump generation
+      tts.generate({ text: ssmlToPlainText(parseSSML(spokenText)) }, `${book.id}-ch${currentChapter}-s${sentenceIdx}`);
       setCurrentSentence(sentenceIdx);
     }
   }
@@ -768,9 +829,104 @@ function ReaderPageInner() {
     }
   }
 
+  useEffect(() => {
+    return () => {
+      bgEmbedWorkerRef.current?.terminate();
+    };
+  }, []);
+
+  const triggerBackgroundEmbed = async (bid: string, chaps: Chapter[]) => {
+    const existing = await getCachedEmbeddings(bid);
+    if (existing && existing.length > 0) return; // Already embedded
+
+    const chunks = extractParagraphChunks(chaps);
+    if (chunks.length === 0) return;
+
+    const worker = new Worker(new URL("../../../../workers/ai.worker.ts", import.meta.url), { type: "module" });
+    bgEmbedWorkerRef.current = worker;
+
+    const vectors: { text: string; vector: number[] }[] = [];
+    let idx = 0;
+
+    worker.onmessage = async (e) => {
+      const msg = e.data;
+      if (msg.type === "result" && msg.task === "embed") {
+        vectors.push({ text: chunks[idx], vector: msg.result });
+        idx++;
+        if (idx < chunks.length) {
+          // Send next
+          worker.postMessage({ type: "embed", text: chunks[idx], id: `bg-${idx}` });
+        } else {
+          // Done
+          await putCachedEmbeddings(bid, vectors);
+          worker.terminate();
+          bgEmbedWorkerRef.current = null;
+          console.log("Background embeddings complete:", vectors.length);
+        }
+      }
+    };
+    
+    // Start first chunk
+    worker.postMessage({ type: "embed", text: chunks[0], id: `bg-0` });
+  };
+
   const currentPageBookmarked = bookmarks.some((b) => b.page === currentChapter);
   const chapterProgress = chapters.length > 0 ? ((currentChapter + 1) / chapters.length) * 100 : 0;
   const themeStyle = THEME_STYLES[theme];
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ignore if typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          handlePlay();
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          goRelativeTime(10);
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          goRelativeTime(-10);
+          break;
+        case "j":
+        case "J":
+          if (currentChapter < chapters.length - 1) setCurrentChapter((c) => c + 1);
+          break;
+        case "k":
+        case "K":
+          if (currentChapter > 0) setCurrentChapter((c) => c - 1);
+          break;
+        case "b":
+        case "B":
+          if (book && chapters[currentChapter]) {
+            const ch = chapters[currentChapter];
+            const text = ch.text.slice(0, 200);
+            if (currentPageBookmarked) {
+              const bm = bookmarks.find((b) => b.page === currentChapter);
+              if (bm) removeBookmark(bm.id);
+            } else {
+              addBookmark(book.id, currentChapter, text);
+            }
+          }
+          break;
+        case "/":
+          e.preventDefault();
+          setPanel((p) => (p === "toc" ? null : "toc"));
+          break;
+        case "Escape":
+          if (panel) setPanel(null);
+          break;
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   function formatTime(s: number) {
     if (!s || isNaN(s)) return "0:00";
@@ -785,8 +941,8 @@ function ReaderPageInner() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 size={24} className="animate-spin text-primary" />
+      <div className={cn("min-h-[100dvh] pt-16", themeStyle.bg)}>
+        <ReaderContentSkeleton />
       </div>
     );
   }
@@ -820,8 +976,23 @@ function ReaderPageInner() {
   const sentences = chapter ? chapter.text.replace(/([.!?])\s+/g, "$1|SPLIT|").split("|SPLIT|") : [];
 
   return (
-    <div className={cn("flex flex-col h-[calc(100dvh-5rem)] lg:h-dvh relative overflow-hidden", themeStyle.bg)}>
+    <div className={cn("flex flex-col h-[calc(100dvh-5rem)] lg:h-dvh relative overflow-hidden page-transition", themeStyle.bg)}>
       
+      <AnimatePresence>
+        {book && showRecap && currentChapter > 0 && chapters[currentChapter - 1] && (
+          <RecapBanner
+            theme={theme}
+            bookId={book.id}
+            previousChapterText={chapters[currentChapter - 1].text}
+            onDismiss={() => setShowRecap(false)}
+            onExpand={() => {
+              setAiAction("recap");
+              setPanel("ai");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* ─── Flat transparent top strip (Phase 1a) ─── */}
       <div
         className={cn(
@@ -1127,40 +1298,40 @@ function ReaderPageInner() {
                 autoFocus
                 placeholder="Search in book…"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  const q = e.target.value;
+                  setSearchQuery(q);
+                  if (q.trim().length >= 2) {
+                    setSearchResults(searchBook(q));
+                  } else {
+                    setSearchResults([]);
+                  }
+                }}
                 className={cn("flex-1 bg-transparent outline-none text-sm", themeStyle.text)}
               />
               <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             {searchQuery.trim().length >= 2 && (
               <div className="space-y-1">
-                {chapters.flatMap((ch, chIdx) => {
-                  const q = searchQuery.toLowerCase();
-                  const idx = ch.text.toLowerCase().indexOf(q);
-                  if (idx === -1) return [];
-                  const start = Math.max(0, idx - 40);
-                  const end = Math.min(ch.text.length, idx + q.length + 80);
-                  const snippet = ch.text.slice(start, end);
-                  return [(
-                    <button
-                      key={chIdx}
-                      onClick={() => { setCurrentChapter(chIdx); setPanel(null); }}
-                      className={cn("w-full text-left px-3 py-2.5 rounded-xl text-sm transition hover:bg-muted", themeStyle.text)}
-                    >
-                      <p className="text-xs text-muted-foreground font-semibold mb-1">
-                        Chapter {chIdx + 1} · {ch.title}
-                      </p>
-                      <p className="text-xs leading-relaxed">
-                        …{snippet.split(new RegExp(`(${searchQuery})`, "gi")).map((part, i) =>
-                          part.toLowerCase() === q
-                            ? <mark key={i} className="bg-primary/30 text-primary font-semibold">{part}</mark>
-                            : <span key={i}>{part}</span>
-                        )}…
-                      </p>
-                    </button>
-                  )];
-                })}
-                {chapters.every((ch) => !ch.text.toLowerCase().includes(searchQuery.toLowerCase())) && (
+                {searchResults.map((hit, i) => (
+                  <button
+                    key={`${hit.chapterIdx}-${i}`}
+                    onClick={() => { setCurrentChapter(hit.chapterIdx); setPanel(null); }}
+                    className={cn("w-full text-left px-3 py-2.5 rounded-xl text-sm transition hover:bg-muted", themeStyle.text)}
+                  >
+                    <p className="text-xs text-muted-foreground font-semibold mb-1">
+                      Chapter {hit.chapterIdx + 1} · {hit.chapterTitle}
+                    </p>
+                    <p className="text-xs leading-relaxed">
+                      …{hit.snippet.slice(0, hit.matchStart)}
+                      <mark className="bg-primary/30 text-primary font-semibold">
+                        {hit.snippet.slice(hit.matchStart, hit.matchEnd)}
+                      </mark>
+                      {hit.snippet.slice(hit.matchEnd)}…
+                    </p>
+                  </button>
+                ))}
+                {searchResults.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-8">No matches</p>
                 )}
               </div>
@@ -1402,6 +1573,14 @@ function ReaderPageInner() {
               checked={highlightSentence}
               onChange={setHighlightSentence}
             />
+            <ToggleRow
+              theme={theme}
+              themeText={themeStyle.text}
+              label="Podcast mode"
+              hint="Alternates between two voices for different paragraphs (Warning: disables SSML)"
+              checked={podcastMode}
+              onChange={setPodcastMode}
+            />
 
             <div className="mt-4">
               <label className={cn("text-[11px] uppercase tracking-wider font-bold opacity-60 block mb-2", themeStyle.text)}>Sleep timer</label>
@@ -1439,12 +1618,19 @@ function ReaderPageInner() {
         className="flex-1 overflow-y-auto px-6 sm:px-10 pt-5 relative outline-none pb-[320px]"
         onClick={() => panel && setPanel(null)}
       >
-        {viewMode === "pdf" && book?.fileType === "pdf" ? (
-          <div className="absolute inset-x-0 top-0 bottom-[300px] sm:bottom-[280px] px-2 sm:px-4">
-            <iframe
-              src={`/api/files/${book.r2Key}#zoom=page-width`}
-              title={book.title}
-              className="w-full h-full rounded-2xl shadow-lg border border-border/40 bg-white"
+        {viewMode === "pdf" && book?.fileType === "pdf" && pdfFileUrl ? (
+          <div className="max-w-3xl mx-auto w-full">
+            <PageView
+              fileUrl={pdfFileUrl}
+              pageCount={book.pageCount ?? undefined}
+              theme={theme}
+              currentWord={currentWord}
+              currentSentence={currentSentence}
+              cursorColor={cursorColor}
+              onWordClick={(idx, word) => {
+                // Click-to-seek: jump TTS to that word position
+                handleSentenceClick(0);
+              }}
             />
           </div>
         ) : (
@@ -1660,23 +1846,13 @@ function ReaderPageInner() {
       {/* ─── AI sheet placeholder (Phase 1d wiring; full features land in Phase 9) ─── */}
       <AnimatePresence>
         {panel === "ai" && aiAction && (
-          <motion.div
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute bottom-0 inset-x-0 z-40 border-t rounded-t-3xl p-5 max-h-[70vh] overflow-y-auto",
-              theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border")}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className={cn("font-bold capitalize", themeStyle.text)}>{aiAction}</h3>
-              <button onClick={() => { setPanel(null); setAiAction(null); }} className="p-1 text-muted-foreground hover:text-foreground"><X size={18}/></button>
-            </div>
-            <div className="py-10 text-center">
-              <p className={cn("text-sm font-semibold opacity-80", themeStyle.text)}>Coming soon</p>
-              <p className={cn("text-xs mt-1 opacity-60", themeStyle.text)}>
-                Free, on-device {aiAction} powered by Transformers.js — landing in Phase 9.
-              </p>
-            </div>
-          </motion.div>
+          <AIPanel
+            action={aiAction as "summary" | "recap" | "quiz" | "chat"}
+            theme={theme}
+            textContext={chapters[currentChapter]?.text ?? ""}
+            bookId={book.id}
+            onClose={() => { setPanel(null); setAiAction(null); }}
+          />
         )}
       </AnimatePresence>
 

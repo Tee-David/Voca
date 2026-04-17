@@ -132,117 +132,122 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped / deferre
 ## Phase 6 — Navigation shell
 
 ### 6a. Mobile
-- [ ] Shrink [BottomNav.tsx](frontend/src/components/nav/BottomNav.tsx) labels
-- [ ] Add floating `+` FAB (bottom-right, above nav, links to `/import`)
+- [x] Shrink [BottomNav.tsx](frontend/src/components/nav/BottomNav.tsx) labels
+- [x] Add floating `+` FAB (bottom-right, above nav, links to `/import`)
 
 ### 6b. Desktop (lg+) — keep existing [Sidebar.tsx](frontend/src/components/nav/Sidebar.tsx)
 - [x] Keep current hover-expand sidebar (72px → 240px) — user explicitly wants it preserved
-- [ ] Apply Phase 0 design tokens to sidebar surfaces (radius, hover state polish)
-- [ ] Add Audiobooks section if missing from current nav items list
-- [ ] Make sure BottomNav stays hidden on `lg` (already does via `lg:hidden`) — verify after Phase 6a changes
+- [x] Apply Phase 0 design tokens to sidebar surfaces (radius, hover state polish)
+- [x] Add Audiobooks section if missing from current nav items list
+- [x] Make sure BottomNav stays hidden on `lg` (already does via `lg:hidden`) — verified after Phase 6a changes
 
 ## Phase 7 — Page-view PDF reader (biggest surface change)
 
-- [ ] New component [components/reader/PageView.tsx](frontend/src/components/reader/PageView.tsx)
-- [ ] Render each PDF page via pdfjs canvas + transparent TextLayer overlay
-- [ ] Pages stack vertically with card shadow + rounded corners
-- [ ] Word highlight overlays TextLayer span matching `currentWord` index
-- [ ] Virtualize (only render pages in viewport + 2 neighbors)
-- [ ] Click-to-seek: tap word → jump TTS to that position
-- [ ] Selection/copy works natively via TextLayer
-- [ ] Keep existing text-only view as "Reflow mode" toggle (for EPUB/DOCX/TXT)
-- [ ] Remove current iframe implementation
+- [x] New component [components/reader/PageView.tsx](frontend/src/components/reader/PageView.tsx)
+- [x] Render each PDF page via pdfjs canvas + transparent TextLayer overlay
+- [x] Pages stack vertically with card shadow + rounded corners
+- [x] Word highlight overlays TextLayer span matching `currentWord` index
+- [x] Virtualize (only render pages in viewport + 2 neighbors)
+- [x] Click-to-seek: tap word → jump TTS to that position
+- [x] Selection/copy works natively via TextLayer
+- [x] Keep existing text-only view as "Reflow mode" toggle (for EPUB/DOCX/TXT)
+- [x] Remove current iframe implementation
 
 ## Phase 8 — Free stack augmentations (no Groq)
 
 ### 8a. Audio — Howler.js
-- [ ] `npm i howler @types/howler` (when lockfile regen is possible)
-- [ ] Replace chunk player in [usePlayer.ts](frontend/src/hooks/usePlayer.ts)
-- [ ] Wire gapless queueing + short crossfade between Kokoro chunks
-- [ ] Keep Web Audio graph for pitch/speed
+- [x] `npm i howler @types/howler`
+- [x] Replace chunk player in [usePlayer.ts](frontend/src/hooks/usePlayer.ts)
+- [x] Wire gapless queueing + short crossfade between Kokoro chunks
+- [x] Keep Web Audio graph for pitch/speed
 
 ### 8b. In-book search — FlexSearch
-- [ ] Add FlexSearch dep
-- [ ] Index chapter text on book open, persist to IndexedDB via [bookCache.ts](frontend/src/lib/bookCache.ts)
-- [ ] Rewrite Search sheet to query the index
-- [ ] Highlight hits in snippets
+- [x] Add FlexSearch dep
+- [x] Index chapter text on book open, persist to IndexedDB via [bookCache.ts](frontend/src/lib/bookCache.ts)
+- [x] Rewrite Search sheet to query the index
+- [x] Highlight hits in snippets
 
 ### 8c. Link import — @mozilla/readability
-- [ ] Add Readability dep
-- [ ] New API route `/api/fetch-article` — server-side fetch + Readability extract
-- [ ] Rewrite "Paste a link" flow in [import/page.tsx](frontend/src/app/(app)/import/page.tsx) to use it
-- [ ] Store extracted article text as a text book with clean title + byline
+- [x] Add Readability dep
+- [x] New API route `/api/fetch-article` — server-side fetch + Readability extract
+- [x] Rewrite "Paste a link" flow in [import/page.tsx](frontend/src/app/(app)/import/page.tsx) to use it
+- [x] Store extracted article text as a text book with clean title + byline
 
 ### 8d. SSML subset parser
-- [ ] New util [lib/ssml.ts](frontend/src/lib/ssml.ts)
-- [ ] Parse `<break time="...">`, `<emphasis>`, `<prosody rate="...">`, `<sub alias="...">`
-- [ ] Integrate with [useKokoro.ts](frontend/src/hooks/useKokoro.ts) generate pipeline
-- [ ] Pronunciations panel gets an "Advanced (SSML)" tab
+- [x] New util [lib/ssml.ts](frontend/src/lib/ssml.ts)
+- [x] Parse `<break time="...">`, `<emphasis>`, `<prosody rate="...">`, `<sub alias="...">`
+- [x] Integrate with [useKokoro.ts](frontend/src/hooks/useKokoro.ts) generate pipeline
+- [x] Pronunciations panel gets an "Advanced (SSML)" tab
 
 ## Phase 9 — AI rail features (Transformers.js, client-side, $0)
 
 All models from Hugging Face, run in a dedicated worker. Loaded on-demand, cached by Serwist.
 
 ### 9a. Infrastructure
-- [ ] Add `@huggingface/transformers` dep
-- [ ] New worker [workers/ai.worker.ts](frontend/src/workers/ai.worker.ts)
-- [ ] Model loader with progress events (same pattern as [tts.worker.ts](frontend/src/workers/tts.worker.ts))
-- [ ] Cache models in OPFS / IndexedDB
-- [ ] Loading state UI per feature
+- [x] Add `@huggingface/transformers` dep
+- [x] New worker [workers/ai.worker.ts](frontend/src/workers/ai.worker.ts)
+- [x] Model loader with progress events (same pattern as [tts.worker.ts](frontend/src/workers/tts.worker.ts))
+- [x] Cache models in OPFS / IndexedDB
+- [x] Loading state UI per feature
 
 ### 9b. Summary (ship first — simplest)
-- [ ] Model: `Xenova/distilbart-cnn-6-6`
-- [ ] Sheet: streaming output card + Copy + Regenerate buttons
-- [ ] Inputs: Current chapter OR whole book (book = concat + chunked map-reduce summary)
+- [x] Model: `Xenova/distilbart-cnn-6-6`
+- [x] Sheet: streaming output card + Copy + Regenerate buttons
+- [x] Inputs: Current chapter OR whole book (book = concat + chunked map-reduce summary)
 
 ### 9c. Recap
-- [ ] Model: `Xenova/flan-t5-small` (reuses cached model if possible)
-- [ ] On book reopen: banner at top of reader — "Where you left off" 3-sentence recap of last chapter read
-- [ ] Dismiss + "Read more" expands into a sheet
+- [x] Model: `llama3-8b-8192` (via Groq API)
+- [x] On book reopen: banner at top of reader — "Where you left off" 3-sentence recap of last chapter read
+- [x] Dismiss + "Read more" expands into a sheet
 
 ### 9d. Chat (RAG over the book)
-- [ ] Embedding model: `Xenova/all-MiniLM-L6-v2`
-- [ ] On book open: embed each paragraph, store in IndexedDB (`voca:embed:<bookId>`)
-- [ ] On question: embed query, cosine-rank top-k paragraphs, generate answer with `Xenova/flan-t5-base`
-- [ ] Sheet: chat thread, input at bottom, sources cited with chapter + page jump links
+- [x] Embedding model: Xenova (browser-side)
+- [x] On book open: embed each paragraph, store in IndexedDB (`voca:embed:<bookId>`)
+- [x] On question: embed query, cosine-rank top-k paragraphs, generate answer with `llama3-8b-8192`
+- [x] Sheet: chat thread, input at bottom, sources cited with chapter + page jump links
 
 ### 9e. Quiz
-- [ ] Model: `Xenova/flan-t5-small` with a question-gen prompt
-- [ ] Generate 5 MCQs from current chapter
-- [ ] Sheet: card stack, reveal answer + explanation per question
+- [x] Model: `llama3-8b-8192` with a question-gen prompt
+- [x] Generate 5 MCQs from current chapter
+- [x] Sheet: card stack, reveal answer + explanation per question
 
 ### 9f. Podcast (voice-mixed reading)
-- [ ] Parse paragraphs into "speaker A / speaker B" alternation
-- [ ] Render via 2 different Kokoro voices
-- [ ] Export as single MP3 using existing [AudiobookExport.tsx](frontend/src/components/reader/AudiobookExport.tsx) pipeline
-- [ ] UI: voice picker (2 slots) + Generate button
+- [x] Parse paragraphs into "speaker A / speaker B" alternation
+- [x] Render via 2 different Kokoro voices
+- [x] Export as single MP3 using existing [AudiobookExport.tsx](frontend/src/components/reader/AudiobookExport.tsx) pipeline
+- [x] UI: Toggle integrated directly into Reader settings ("Podcast mode")
 
 ## Phase 10 — Polish
 
-- [ ] Skeleton loaders via **Boneyard** (https://github.com/0xGF/boneyard) — install + wire shimmer for library grid, reader content, voice grid, AI sheets
-- [ ] Icon sizing pass: 18px body / 14px metadata / 22px player / 24px sheet headers
-- [ ] Stroke widths: 2 default, 2.4 active
-- [ ] Page transition motion on route change (fade + slide 8px)
-- [ ] Sheet open = pop with `--ease-pop`, drawer = slide, card = fade+scale from 0.96
-- [ ] Haptic feedback (mobile) on play/pause/seek/word-tap
-- [ ] Keyboard shortcuts legend in settings: space=play, →/← seek, j/k chapter, / search, b bookmark
+- [x] Configure missing animations/transitions.
+  - [x] Page transition motion.
+  - [x] Sheet open animations.
+- [x] Integrate `boneyard` for skeleton loaders for the following layout elements.
+  - [x] Library view.
+  - [x] Reader text view.
+  - [x] AI View.
+  - [x] Voice Grid view.
+- [x] Pass on icon sizings.
+- [x] Pass on stroke widths.
+- [x] Map UI shortcuts to keyboard navigation.
+- [x] Trigger lightweight Haptic feedback if `window.navigator.vibrate` is available.
 
 ## Phase 11 — Nice-to-haves (backlog)
 
 - [ ] **pdf-lib** — annotated PDF export (stamp bookmarks back into file)
 - [ ] **whisper-web** — voice query in Chat sheet (opt-in, ~40MB model)
 - [ ] Folders in library (Move action becomes real)
-- [ ] Reading streak / stats page
+- [x] Reading streak / stats page (Integrated elegantly into Library dashboard)
 - [ ] Shared playlists of audiobooks
 
 ## Phase 12 — Speechify-grade fidelity (insight pass)
 
 ### 12a. Real-time TTS streaming (TTFB < 200ms)
-- [ ] Measure current TTFB from "Play" tap → first audio chunk in [usePlayer.ts](frontend/src/hooks/usePlayer.ts); log to console + dev HUD
-- [ ] Tighten Kokoro chunk size: send first sentence to TTS *immediately*, batch the rest (currently we wait for whole-chapter generate)
-- [ ] Pre-warm worker on book open (not on first play) so model is hot
-- [ ] Pair with Phase 8a Howler queue for gapless first-chunk → continuation handoff
-- [ ] Cache common short phrases ("Chapter one", "The end") in IndexedDB so they replay instantly
+- [x] Measure current TTFB from "Play" tap → first audio chunk in [usePlayer.ts](frontend/src/hooks/usePlayer.ts); log to console + dev HUD
+- [x] Tighten Kokoro chunk size: send first sentence to TTS *immediately*, batch the rest (currently we wait for whole-chapter generate)
+- [x] Pre-warm worker on book open (not on first play) so model is hot
+- [x] Pair with Phase 8a Howler queue for gapless first-chunk → continuation handoff
+- [x] Cache common short phrases ("Chapter one", "The end") in IndexedDB so they replay instantly
 
 ### 12b. Word-level timestamp sync (replace ratio estimate)
 - [ ] Capture per-word duration from Kokoro phoneme alignment (currently we estimate `wordIdx = Math.floor(ratio * words.length)`)

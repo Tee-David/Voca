@@ -12,11 +12,11 @@ import { VocaMark } from "@/components/brand/VocaLogo";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/library",  label: "Home",       icon: Home },
-  { href: "/import",   label: "Import",     icon: Plus },
-  { href: "/books",    label: "Library",    icon: Library },
-  { href: "/voices",   label: "Voices",     icon: Mic },
-  { href: "/player",   label: "Now Playing", icon: Headphones },
+  { href: "/library",    label: "Home",        icon: Home },
+  { href: "/import",     label: "Import",      icon: Plus },
+  { href: "/books",      label: "Library",     icon: Library },
+  { href: "/voices",     label: "Voices",      icon: Mic },
+  { href: "/audiobooks", label: "Audiobooks",  icon: Headphones },
 ];
 
 const bottomItems = [
@@ -54,17 +54,18 @@ export function Sidebar() {
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 flex flex-col gap-1 px-2 mt-2">
+      <nav className="flex-1 flex flex-col gap-0.5 px-2 mt-2">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link key={href} href={href}>
               <div
                 className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors group relative",
+                  "flex items-center gap-3 px-3 py-2.5 transition-all duration-200 group relative",
+                  "rounded-[var(--radius-lg)]",
                   active
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                 )}
               >
                 {active && (
@@ -92,7 +93,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom section */}
-      <div className="flex flex-col gap-1 px-2 pb-3">
+      <div className="flex flex-col gap-0.5 px-2 pb-3">
         {/* Divider */}
         <div className="h-px bg-border/60 mx-2 mb-1" />
 
@@ -102,10 +103,11 @@ export function Sidebar() {
             <Link key={href} href={href}>
               <div
                 className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 transition-all duration-200",
+                  "rounded-[var(--radius-lg)]",
                   active
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                 )}
               >
                 <Icon size={20} strokeWidth={active ? 2.5 : 1.8} className="shrink-0 ml-0.5" />
@@ -125,7 +127,13 @@ export function Sidebar() {
         })}
 
         {/* User profile */}
-        <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 mt-1 bg-muted/40">
+        <div
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 mt-1",
+            "rounded-[var(--radius-lg)] bg-muted/40",
+            "transition-colors duration-200 hover:bg-muted/60"
+          )}
+        >
           <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
             <span className="text-xs font-bold text-primary">{initials}</span>
           </div>

@@ -256,7 +256,7 @@ export default function PlayerPage() {
       voice: tts.voice, speed,
     };
     setTtsLoading(true);
-    tts.generate(ch.text.slice(0, 4000), `${book.id}-ch${idx}`);
+    tts.generate({ text: ch.text.slice(0, 4000) }, `${book.id}-ch${idx}`);
   };
 
   const togglePlay = async () => {

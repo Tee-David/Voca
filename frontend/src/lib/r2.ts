@@ -21,7 +21,10 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL;
 /** Presigned URL for uploads (1h TTL). Keeps browser → R2 direct, CORS required on bucket. */
 export async function getUploadUrl(key: string, contentType: string) {
   const cmd = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType });
-  return getSignedUrl(r2, cmd, { expiresIn: 3600 });
+  return getSignedUrl(r2, cmd, { 
+    expiresIn: 3600,
+    signableHeaders: new Set(["content-type"])
+  });
 }
 
 /** Public URL when bucket is public, otherwise use getDownloadUrl */

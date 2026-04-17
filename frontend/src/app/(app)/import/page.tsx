@@ -81,15 +81,32 @@ export default function ImportPage() {
     setUploading(true);
     setError("");
     try {
-      let file: File;
       if (activeAction === "link") {
+        // Phase 8c: Use server-side Readability extraction
         const url = inputValue.trim();
-        // Just create a tiny txt file referencing the URL for now, or fetch logic
-        file = new File([url], "Link Import.txt", { type: "text/plain" });
+        const extractRes = await fetch("/api/fetch-article", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!extractRes.ok) {
+          const body = await extractRes.json().catch(() => ({}));
+          throw new Error(body.error || `Failed to extract article (${extractRes.status})`);
+        }
+        const article = await extractRes.json();
+        const content = article.byline
+          ? `${article.title}\nBy ${article.byline}\n\n${article.content}`
+          : `${article.title}\n\n${article.content}`;
+        const file = new File(
+          [content],
+          `${(article.title || "Article").slice(0, 80)}.txt`,
+          { type: "text/plain" }
+        );
+        await handleFile(file);
       } else {
-        file = new File([inputValue], "Pasted Text.txt", { type: "text/plain" });
+        const file = new File([inputValue], "Pasted Text.txt", { type: "text/plain" });
+        await handleFile(file);
       }
-      await handleFile(file);
     } catch (e: any) {
       setError(e.message || "Action failed");
       setUploading(false);

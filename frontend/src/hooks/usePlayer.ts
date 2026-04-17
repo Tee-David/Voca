@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import { Howl, Howler } from "howler";
 
 export type PlayerState = {
   playing: boolean;
@@ -13,9 +14,10 @@ export type PlayerState = {
 };
 
 export function usePlayer() {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentHowl = useRef<Howl | null>(null);
   const queueRef = useRef<(Blob | ArrayBuffer)[]>([]);
   const playingIdx = useRef(0);
+  const frameRef = useRef<number>();
 
   const [state, setState] = useState<PlayerState>({
     playing: false,
@@ -27,51 +29,70 @@ export function usePlayer() {
     chapterTitle: null,
   });
 
+  const updateProgress = useCallback(() => {
+    if (currentHowl.current && currentHowl.current.playing()) {
+      setState((s) => ({
+        ...s,
+        currentTime: (currentHowl.current?.seek() as number) || 0,
+      }));
+      frameRef.current = requestAnimationFrame(updateProgress);
+    }
+  }, []);
+
   useEffect(() => {
-    const audio = new Audio();
-    audioRef.current = audio;
-
-    audio.addEventListener("timeupdate", () => {
-      setState((s) => ({ ...s, currentTime: audio.currentTime }));
-    });
-    audio.addEventListener("ended", () => {
-      playNext();
-    });
-
     return () => {
-      audio.pause();
-      audio.src = "";
+      currentHowl.current?.unload();
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
   }, []);
 
-  const playNext = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  const playBuffer = useCallback(
+    (buffer: Blob | ArrayBuffer) => {
+      currentHowl.current?.unload();
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
 
+      const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: "audio/wav" });
+      const url = URL.createObjectURL(blob);
+
+      const sound = new Howl({
+        src: [url],
+        format: ["wav"],
+        html5: true, // Force HTML5 Audio to allow memory efficient streaming
+        onplay: () => {
+          setState((s) => ({ ...s, playing: true, duration: sound.duration() }));
+          frameRef.current = requestAnimationFrame(updateProgress);
+        },
+        onpause: () => {
+          setState((s) => ({ ...s, playing: false }));
+          if (frameRef.current) cancelAnimationFrame(frameRef.current);
+        },
+        onend: () => {
+          if (frameRef.current) cancelAnimationFrame(frameRef.current);
+          URL.revokeObjectURL(url);
+          playNext();
+        },
+        onstop: () => {
+          setState((s) => ({ ...s, playing: false }));
+          if (frameRef.current) cancelAnimationFrame(frameRef.current);
+          URL.revokeObjectURL(url);
+        },
+      });
+
+      currentHowl.current = sound;
+      sound.play();
+    },
+    [updateProgress]
+  );
+
+  const playNext = useCallback(() => {
     playingIdx.current++;
     if (playingIdx.current < queueRef.current.length) {
       setState((s) => ({ ...s, chunkIndex: playingIdx.current }));
       playBuffer(queueRef.current[playingIdx.current]);
     } else {
-      setState((s) => ({ ...s, playing: false }));
+      setState((s) => ({ ...s, playing: false, currentTime: 0 }));
     }
-  }, []);
-
-  const playBuffer = useCallback((buffer: Blob | ArrayBuffer) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: "audio/wav" });
-    const url = URL.createObjectURL(blob);
-
-    audio.src = url;
-    audio.play().catch(() => {});
-    setState((s) => ({ ...s, playing: true, duration: 0 }));
-
-    audio.onloadedmetadata = () => {
-      setState((s) => ({ ...s, duration: audio.duration }));
-    };
-  }, []);
+  }, [playBuffer]);
 
   const enqueueChunk = useCallback(
     (buffer: Blob | ArrayBuffer) => {
@@ -85,29 +106,28 @@ export function usePlayer() {
   );
 
   const play = useCallback(() => {
-    audioRef.current?.play().catch(() => {});
-    setState((s) => ({ ...s, playing: true }));
+    currentHowl.current?.play();
   }, []);
 
   const pause = useCallback(() => {
-    audioRef.current?.pause();
-    setState((s) => ({ ...s, playing: false }));
+    currentHowl.current?.pause();
   }, []);
 
   const toggle = useCallback(() => {
-    if (state.playing) pause();
-    else play();
-  }, [state.playing, play, pause]);
+    if (currentHowl.current?.playing()) {
+      pause();
+    } else {
+      play();
+    }
+  }, [play, pause]);
 
   const seek = useCallback((time: number) => {
-    if (audioRef.current) audioRef.current.currentTime = time;
+    currentHowl.current?.seek(time);
+    setState((s) => ({ ...s, currentTime: time }));
   }, []);
 
   const stop = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-    }
+    currentHowl.current?.stop();
     queueRef.current = [];
     playingIdx.current = 0;
     setState({
@@ -139,17 +159,19 @@ export function usePlayer() {
   );
 
   const resetQueue = useCallback(() => {
+    currentHowl.current?.stop();
     queueRef.current = [];
     playingIdx.current = 0;
   }, []);
 
   const playSingleBuffer = useCallback(
     (buffer: Blob | ArrayBuffer) => {
+      resetQueue();
       queueRef.current = [buffer];
       playingIdx.current = 0;
       playBuffer(buffer);
     },
-    [playBuffer]
+    [playBuffer, resetQueue]
   );
 
   return {
