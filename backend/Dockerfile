@@ -2,10 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for audio processing
-RUN apt-get update && apt-get install -y \
+# System deps:
+#  - libsndfile1, espeak-ng: audio/TTS
+#  - ocrmypdf + tesseract, ghostscript, qpdf, pngquant, unpaper: OCR pipeline
+#  - tesseract-ocr-eng: English language data (add more -<lang> packs if needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     espeak-ng \
+    ocrmypdf \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    ghostscript \
+    qpdf \
+    pngquant \
+    unpaper \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

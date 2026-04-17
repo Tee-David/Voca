@@ -91,6 +91,11 @@ model Book {
   uploadedAt   DateTime @default(now())
   lastOpenedAt DateTime?
 
+  // OCR pipeline — "none" | "pending" | "processing" | "done" | "failed"
+  ocrStatus    String?
+  ocrError     String?
+  ocrUpdatedAt DateTime?
+
   progress        ReadingProgress?
   bookmarks       Bookmark[]
   audiobooks      Audiobook[]

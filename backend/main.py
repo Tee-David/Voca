@@ -5,13 +5,15 @@ Primary TTS runs in the browser via kokoro-js.
 This backend serves as a fallback for heavy audiobook generation.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import io
 import os
+import subprocess
+import tempfile
 
 app = FastAPI(title="Voca TTS API", version="1.0.0")
 
@@ -21,7 +23,7 @@ API_KEY = os.getenv("VOCA_API_KEY", "")  # Set in HF Space secrets
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL, "http://localhost:3000"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -67,6 +69,7 @@ def root():
       <li><code>GET /health</code> — health check (pinged by UptimeRobot)</li>
       <li><code>GET /voices</code> — list available voices</li>
       <li><code>POST /tts</code> — generate speech (requires API key)</li>
+      <li><code>POST /ocr</code> — add text layer to scanned PDF (multipart: file, language, force)</li>
     </ul>
     <p style="color:#888">Powered by KokoroTTS · Deployed on Hugging Face Spaces</p>
     </body></html>
@@ -128,3 +131,71 @@ def generate_tts(req: TTSRequest, _: bool = Depends(verify_api_key)):
         )
     except Exception as e:
         raise HTTPException(500, f"TTS failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# OCR — wrap OCRmyPDF. Accepts a PDF upload, returns a searchable PDF.
+# ---------------------------------------------------------------------------
+
+MAX_OCR_BYTES = 60 * 1024 * 1024  # 60MB hard cap — HF free tier memory
+
+
+@app.post("/ocr")
+async def ocr_pdf(
+    file: UploadFile = File(...),
+    language: str = Form("eng"),
+    force: bool = Form(False),
+    _: bool = Depends(verify_api_key),
+):
+    """
+    Run OCRmyPDF over an uploaded PDF and stream back a searchable PDF
+    with an embedded text layer. pdfjs can then extract text natively.
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > MAX_OCR_BYTES:
+        raise HTTPException(413, f"File too large (max {MAX_OCR_BYTES // (1024*1024)}MB)")
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as src, \
+         tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as dst:
+        src.write(data)
+        src.flush()
+        src_path, dst_path = src.name, dst.name
+
+    try:
+        cmd = [
+            "ocrmypdf",
+            "--language", language,
+            "--output-type", "pdf",
+            "--optimize", "1",
+            "--jobs", "2",
+            "--quiet",
+        ]
+        if force:
+            cmd.append("--force-ocr")
+        else:
+            cmd.append("--skip-text")
+        cmd += [src_path, dst_path]
+
+        proc = subprocess.run(cmd, capture_output=True, timeout=600)
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode(errors="ignore")[-1000:]
+            raise HTTPException(500, f"ocrmypdf failed ({proc.returncode}): {stderr}")
+
+        with open(dst_path, "rb") as f:
+            out = f.read()
+
+        return StreamingResponse(
+            io.BytesIO(out),
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="ocr.pdf"'},
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "OCR timed out (10min cap)")
+    finally:
+        for p in (src_path, dst_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass

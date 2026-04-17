@@ -36,6 +36,9 @@ type Book = {
   coverUrl: string | null;
   bookmarks?: BookmarkItem[];
   progress: { currentPage: number; percentComplete: number } | null;
+  ocrStatus?: string | null;
+  ocrError?: string | null;
+  pageCount?: number | null;
 };
 
 type BookmarkItem = {
@@ -104,6 +107,8 @@ export default function ReaderPage() {
   const wordAnimRef = useRef<number>(0);
   const genCollectorRef = useRef<{ blobs: Blob[]; sentences: string[]; bookId: string; chapterIdx: number; voice: string; speed: number } | null>(null);
   const [cachedChaptersSet, setCachedChaptersSet] = useState<Set<number>>(new Set());
+  const [ocrSuggest, setOcrSuggest] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
   const [downloadState, setDownloadState] = useState<{ active: boolean; chapterIdx: number; total: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pronunciations, setPronunciations] = useState<Pronunciation[]>([]);
@@ -173,6 +178,18 @@ export default function ReaderPage() {
           await cacheChapters(data.id, extracted);
           const startPage = data.progress?.currentPage ?? 0;
           setCurrentChapter(Math.min(startPage, extracted.length - 1));
+
+          // Suggest server-side OCR when the PDF is text-thin (likely scanned).
+          // Heuristic: less than ~200 chars per page averaged, and not already OCR'd.
+          if (
+            data.fileType === "pdf" &&
+            data.ocrStatus !== "done" &&
+            data.ocrStatus !== "processing"
+          ) {
+            const totalChars = extracted.reduce((s, c) => s + c.text.length, 0);
+            const pages = data.pageCount ?? Math.max(1, extracted.length * 3);
+            if (totalChars / pages < 200) setOcrSuggest(true);
+          }
         } catch (extractErr) {
           console.error("Extract failed:", extractErr);
           setError(
@@ -180,6 +197,9 @@ export default function ReaderPage() {
               ? `Text extraction failed: ${extractErr.message}`
               : "Text extraction failed"
           );
+          if (data.fileType === "pdf" && data.ocrStatus !== "done" && data.ocrStatus !== "processing") {
+            setOcrSuggest(true);
+          }
         } finally {
           setExtracting(false);
         }
@@ -208,6 +228,31 @@ export default function ReaderPage() {
   }, [id]);
 
   useEffect(() => { loadBook(); }, [loadBook]);
+
+  const runOcr = useCallback(async () => {
+    if (!book || ocrBusy) return;
+    setOcrBusy(true);
+    setOcrSuggest(false);
+    try {
+      const res = await fetch(`/api/library/${book.id}/ocr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: "eng" }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `OCR failed (${res.status})`);
+      }
+      // Clear cached chapters so next load re-extracts from searchable PDF
+      try {
+        await cacheChapters(book.id, []);
+      } catch { /* ignore */ }
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "OCR failed");
+      setOcrBusy(false);
+    }
+  }, [book, ocrBusy]);
 
   useEffect(() => {
     if (chapters.length > 0) saveProgress(currentChapter, chapters.length);
@@ -943,6 +988,34 @@ export default function ReaderPage() {
             </div>
           ) : chapter ? (
             <article>
+              {book?.ocrStatus === "processing" && (
+                <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary font-semibold">
+                  OCR is still running for this book. Refresh in a moment.
+                </div>
+              )}
+              {ocrSuggest && book?.fileType === "pdf" && (
+                <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[220px]">
+                    <p className="text-sm font-semibold text-primary">This PDF looks scanned</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Run OCR to add a real text layer — better extraction and faster TTS on reopen.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={runOcr}
+                      disabled={ocrBusy}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-60"
+                    >
+                      {ocrBusy ? "Processing… (a few min)" : "Run OCR"}
+                    </button>
+                    <button
+                      onClick={() => setOcrSuggest(false)}
+                      className="px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-semibold"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
               <h1
                 className={cn("text-[2rem] sm:text-4xl font-bold mb-3 text-balance leading-[1.1] tracking-tight", themeStyle.text)}
                 style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
@@ -1006,10 +1079,19 @@ export default function ReaderPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
               <p className={cn("font-semibold", themeStyle.text)}>Couldn&apos;t open this book</p>
               <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
-              <div className="flex gap-2 mt-2">
+              <div className="flex gap-2 mt-2 flex-wrap justify-center">
                 <button onClick={loadBook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
                   Retry
                 </button>
+                {ocrSuggest && book?.fileType === "pdf" && (
+                  <button
+                    onClick={runOcr}
+                    disabled={ocrBusy}
+                    className="px-4 py-2 rounded-lg bg-primary/15 text-primary text-sm font-semibold disabled:opacity-60"
+                  >
+                    {ocrBusy ? "Running OCR…" : "Run OCR"}
+                  </button>
+                )}
                 <button onClick={() => router.push("/library")} className="px-4 py-2 rounded-lg bg-muted text-foreground text-sm font-semibold">
                   Back to library
                 </button>
