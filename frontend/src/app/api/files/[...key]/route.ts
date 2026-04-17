@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/lib/r2";
+import { db } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,
@@ -18,6 +19,14 @@ export async function GET(
 
     if (!objectKey) {
       return NextResponse.json({ error: "Key is required" }, { status: 400 });
+    }
+
+    const owns = await db.book.findFirst({
+      where: { r2Key: objectKey, userId: session.user.id },
+      select: { id: true },
+    });
+    if (!owns) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const BUCKET = process.env.R2_BUCKET_NAME!;

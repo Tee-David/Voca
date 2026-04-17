@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Heart, Loader2 } from "lucide-react";
+import { Play, Pause, Heart, Loader2, Download, CheckCircle2 } from "lucide-react";
 import { KOKORO_VOICES, type VoiceId, useKokoro } from "@/hooks/useKokoro";
+import { getCachedPreview, putCachedPreview } from "@/lib/bookCache";
 import { cn } from "@/lib/utils";
 
 const TABS = ["Explore", "Recents", "Favorites"];
-const PREVIEW_TEXT = "Hello! This is a preview of my voice. I can read any document for you.";
+const PREVIEW_TEXT = "Hello! This is a preview of my voice.";
+const FAV_KEY = "voca:fav-voices";
 
 const GENDER_COLORS: Record<string, { bg: string; ring: string }> = {
   F: { bg: "bg-gradient-to-br from-pink-200 to-rose-300 dark:from-pink-800 dark:to-rose-900", ring: "ring-pink-300 dark:ring-pink-700" },
@@ -18,6 +20,7 @@ export default function VoicesPage() {
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [cachedPreviews, setCachedPreviews] = useState<Set<string>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pendingVoiceRef = useRef<string | null>(null);
   const tts = useKokoro();
@@ -28,14 +31,34 @@ export default function VoicesPage() {
     return () => { audioRef.current?.pause(); };
   }, []);
 
+  // Load favorites from localStorage
   useEffect(() => {
-    tts.onSample((voice: string, blob: Blob) => {
-      setLoadingVoice(null);
-      if (audioRef.current) {
-        audioRef.current.src = URL.createObjectURL(blob);
-        audioRef.current.play().catch(() => {});
-        setPlayingVoice(voice);
+    try {
+      const raw = localStorage.getItem(FAV_KEY);
+      if (raw) setFavorites(new Set(JSON.parse(raw)));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Scan IndexedDB to see which voices already have a cached preview
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const found = new Set<string>();
+      for (const v of KOKORO_VOICES) {
+        const blob = await getCachedPreview(v.id).catch(() => null);
+        if (blob) found.add(v.id);
       }
+      if (!cancelled) setCachedPreviews(found);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    tts.onSample(async (voice: string, blob: Blob) => {
+      setLoadingVoice(null);
+      await putCachedPreview(voice, blob).catch(() => {});
+      setCachedPreviews((prev) => new Set(prev).add(voice));
+      playBlob(voice, blob);
     });
   }, [tts]);
 
@@ -48,12 +71,35 @@ export default function VoicesPage() {
     }
   }, [tts.status]);
 
-  function handlePreview(voiceId: string) {
+  function playBlob(voice: string, blob: Blob) {
+    if (!audioRef.current) return;
+    audioRef.current.src = URL.createObjectURL(blob);
+    audioRef.current.play().catch(() => {});
+    setPlayingVoice(voice);
+  }
+
+  async function handlePreview(voiceId: string) {
+    // Toggle off if already playing
     if (playingVoice === voiceId) {
       audioRef.current?.pause();
       setPlayingVoice(null);
       return;
     }
+
+    // Stop any currently-playing preview
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+      setPlayingVoice(null);
+    }
+
+    // Cache hit — play instantly, no model needed
+    const cached = await getCachedPreview(voiceId);
+    if (cached) {
+      playBlob(voiceId, cached);
+      return;
+    }
+
+    // Cache miss — need model. Kick off download if not ready.
     setLoadingVoice(voiceId);
     if (tts.status === "ready") {
       tts.playSample(voiceId, PREVIEW_TEXT);
@@ -69,6 +115,7 @@ export default function VoicesPage() {
     setFavorites((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      try { localStorage.setItem(FAV_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
   }
@@ -116,15 +163,19 @@ export default function VoicesPage() {
         </div>
       )}
 
-      {/* Manual download button if idle */}
+      {/* Offline model download — separate from per-voice preview */}
       {(tts.status === "idle" || tts.status === "error") && (
         <div className="mb-4">
-          <button 
+          <button
             onClick={() => tts.initWorker()}
             className="w-full py-3 rounded-xl bg-card border border-primary/30 text-primary text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-primary/5 transition"
           >
-            Download HD Voice Model (Offline Support)
+            <Download size={14} />
+            Download voices for offline use
           </button>
+          <p className="text-[10px] text-muted-foreground text-center mt-2 px-2">
+            Previews below play instantly once cached — no download needed first.
+          </p>
           {tts.status === "error" && (
             <p className="text-[10px] text-destructive text-center mt-2">Failed to load model. Please check connection.</p>
           )}
@@ -158,8 +209,13 @@ export default function VoicesPage() {
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground">
+                <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
                   {v.name} — {v.accent}
+                  {cachedPreviews.has(v.id) && (
+                    <span title="Preview cached — plays instantly" className="inline-flex items-center">
+                      <CheckCircle2 size={12} className="text-primary" />
+                    </span>
+                  )}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   {v.gender === "F" ? "Female" : "Male"} · {v.accent} English

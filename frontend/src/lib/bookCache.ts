@@ -157,6 +157,35 @@ async function evictIfOverCap(db: IDBPDatabase<VocaDB>) {
   }
 }
 
+// ─── Voice preview cache ────────────────────────────────────────────────────
+// Small singleton blob per voice — auto-regenerated if model/voice pipeline changes.
+
+export async function getCachedPreview(voiceId: string): Promise<Blob | null> {
+  const db = await getDB();
+  if (!db) return null;
+  const key = `preview:${voiceId}`;
+  const row = await db.get("audioCache", key);
+  return row ? row.blobs[0] ?? null : null;
+}
+
+export async function putCachedPreview(voiceId: string, blob: Blob) {
+  const db = await getDB();
+  if (!db) return;
+  const entry: AudioCacheEntry = {
+    key: `preview:${voiceId}`,
+    bookId: "__preview__",
+    chapterIdx: 0,
+    voice: voiceId,
+    speed: 1,
+    blobs: [blob],
+    sentences: [],
+    createdAt: Date.now(),
+    lastPlayedAt: Date.now(),
+    byteSize: blob.size,
+  };
+  await db.put("audioCache", entry);
+}
+
 // Request persistent storage so Safari/iOS doesn't evict after 7 days
 export async function requestPersistentStorage(): Promise<boolean> {
   if (typeof navigator === "undefined" || !navigator.storage?.persist) return false;

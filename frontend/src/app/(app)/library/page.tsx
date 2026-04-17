@@ -204,12 +204,12 @@ export default function LibraryPage() {
       onDrop={handleDrop}
     >
       {/* ─── Hero / Welcome ─── */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight truncate">
             Welcome back, {firstName}
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
             {books.length === 0
               ? "Upload your first book to get started"
               : `You have ${books.length} ${books.length === 1 ? "book" : "books"} in your library`}
@@ -218,13 +218,16 @@ export default function LibraryPage() {
         <button
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition shadow-lg shadow-primary/25"
+          className="self-start sm:self-auto shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition shadow-lg shadow-primary/25"
         >
           {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
           {uploading ? "Uploading…" : "Upload"}
         </button>
         <input ref={fileRef} type="file" accept={ACCEPT} onChange={handleFileChange} className="hidden" />
       </div>
+
+      {/* ─── Curved book gallery ─── */}
+      {books.length > 0 && <CoverGallery books={books} onOpen={(id) => router.push(`/reader/${id}`)} />}
 
       {/* ─── Stats Cards ─── */}
       {stats && (
@@ -463,6 +466,72 @@ export default function LibraryPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CoverGallery({ books, onOpen }: { books: Book[]; onOpen: (id: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scroll, setScroll] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onScroll = () => setScroll(el.scrollLeft);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const items = books.slice(0, 12);
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-10 -mx-4 sm:-mx-6 lg:-mx-8">
+      <div
+        ref={ref}
+        className="flex gap-5 overflow-x-auto snap-x snap-mandatory scroll-smooth px-6 sm:px-10 py-6"
+        style={{ scrollbarWidth: "none" }}
+      >
+        {items.map((book, idx) => {
+          const el = ref.current;
+          const center = el ? scroll + el.clientWidth / 2 : 0;
+          const itemCenter = 192 + idx * (160 + 20);
+          const distance = Math.abs(itemCenter - center);
+          const maxDist = 400;
+          const closeness = Math.max(0, 1 - distance / maxDist);
+          const scale = 0.82 + closeness * 0.18;
+          const rotate = (itemCenter - center) / 40;
+          const translateY = (1 - closeness) * 20;
+          return (
+            <button
+              key={book.id}
+              onClick={() => onOpen(book.id)}
+              className="shrink-0 snap-center transition-transform duration-200 origin-bottom"
+              style={{
+                transform: `translateY(${translateY}px) scale(${scale}) rotate(${rotate}deg)`,
+                opacity: 0.5 + closeness * 0.5,
+              }}
+            >
+              <div
+                className="w-[140px] sm:w-[160px] aspect-[3/4] rounded-xl overflow-hidden shadow-xl"
+                style={{ backgroundColor: book.coverColor || "#4338CA" }}
+              >
+                {book.coverUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                    <BookOpen size={24} className="text-white/70 mb-2" />
+                    <p className="text-white/90 text-[11px] font-bold text-center leading-tight line-clamp-3">
+                      {book.title}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
 import { AudiobookExport } from "@/components/reader/AudiobookExport";
+import { WaveformScrubber } from "@/components/reader/WaveformScrubber";
 import { cn } from "@/lib/utils";
 
 type Book = {
@@ -138,34 +139,56 @@ export default function ReaderPage() {
     [id]
   );
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch(`/api/library/${id}`);
-        if (!res.ok) { setError("Book not found"); return; }
-        const data: Book = await res.json();
-        setBook(data);
-        if (data.bookmarks) setBookmarks(data.bookmarks);
+  const loadBook = useCallback(async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/library/${id}`);
+      if (!res.ok) {
+        setError(res.status === 404 ? "Book not found" : `Server error (${res.status})`);
+        setLoading(false);
+        return;
+      }
+      const data: Book = await res.json();
+      setBook(data);
+      if (data.bookmarks) setBookmarks(data.bookmarks);
 
-        const cached = await getCachedChapters(data.id);
-        if (cached && cached.length > 0) {
-          setChapters(cached);
-          const startPage = data.progress?.currentPage ?? 0;
-          setCurrentChapter(Math.min(startPage, cached.length - 1));
-        } else {
-          setExtracting(true);
+      // Book shell is available — flip off the blocking loader so the page is interactive
+      setLoading(false);
+
+      const cached = await getCachedChapters(data.id);
+      if (cached && cached.length > 0) {
+        setChapters(cached);
+        const startPage = data.progress?.currentPage ?? 0;
+        setCurrentChapter(Math.min(startPage, cached.length - 1));
+      } else {
+        setExtracting(true);
+        try {
           const fileUrl = await getFileUrl(data.r2Key);
           const extracted = await extractText(fileUrl, data.fileType, (stage, value) =>
             setExtractStage({ stage, value })
           );
+          if (extracted.length === 0) throw new Error("No text found in document");
           setChapters(extracted);
           await cacheChapters(data.id, extracted);
           const startPage = data.progress?.currentPage ?? 0;
           setCurrentChapter(Math.min(startPage, extracted.length - 1));
+        } catch (extractErr) {
+          console.error("Extract failed:", extractErr);
+          setError(
+            extractErr instanceof Error
+              ? `Text extraction failed: ${extractErr.message}`
+              : "Text extraction failed"
+          );
+        } finally {
+          setExtracting(false);
         }
+      }
 
-        if (!data.coverUrl && data.fileType === "pdf") {
-          getFileUrl(data.r2Key).then((fileUrl) => extractPdfCover(fileUrl)).then((coverUrl) => {
+      if (!data.coverUrl && data.fileType === "pdf") {
+        getFileUrl(data.r2Key)
+          .then((fileUrl) => extractPdfCover(fileUrl))
+          .then((coverUrl) => {
             if (coverUrl) {
               setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
               fetch(`/api/library/${data.id}/cover`, {
@@ -174,17 +197,17 @@ export default function ReaderPage() {
                 body: JSON.stringify({ coverUrl }),
               }).catch(() => {});
             }
-          });
-        }
-      } catch {
-        setError("Failed to load book");
-      } finally {
-        setLoading(false);
-        setExtracting(false);
+          })
+          .catch(() => {});
       }
+    } catch (err) {
+      console.error("Load book failed:", err);
+      setError(err instanceof Error ? err.message : "Failed to load book");
+      setLoading(false);
     }
-    load();
   }, [id]);
+
+  useEffect(() => { loadBook(); }, [loadBook]);
 
   useEffect(() => {
     if (chapters.length > 0) saveProgress(currentChapter, chapters.length);
@@ -534,13 +557,21 @@ export default function ReaderPage() {
     );
   }
 
-  if (error || !book) {
+  if (!book) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <p className="text-destructive font-medium mb-4">{error || "Book not found"}</p>
-        <button onClick={() => router.push("/library")} className="text-primary text-sm font-semibold">
-          Back to Library
-        </button>
+        <p className="text-destructive font-medium mb-2">{error || "Book not found"}</p>
+        <p className="text-xs text-muted-foreground mb-6 max-w-xs">
+          {error && !error.toLowerCase().includes("not found") && "The file may be too large or corrupt. Try again in a moment."}
+        </p>
+        <div className="flex gap-2">
+          <button onClick={loadBook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
+            Retry
+          </button>
+          <button onClick={() => router.push("/library")} className="px-4 py-2 rounded-lg bg-muted text-foreground text-sm font-semibold">
+            Back to Library
+          </button>
+        </div>
       </div>
     );
   }
@@ -551,18 +582,29 @@ export default function ReaderPage() {
   return (
     <div className={cn("flex flex-col h-[calc(100dvh-5rem)] lg:h-dvh relative overflow-hidden", themeStyle.bg)}>
       
-      {/* ─── Top Header ─── */}
-      <div className="flex items-center justify-between px-4 py-4 z-10 shrink-0">
-        <button onClick={() => router.push("/library")} className="w-10 h-10 rounded-full flex items-center justify-center bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition backdrop-blur-sm">
-          <ArrowLeft size={20} className={themeStyle.text} />
-        </button>
+      {/* ─── Purple gradient top strip ─── */}
+      <div className="relative shrink-0 z-10 pt-safe">
+        <div
+          className={cn(
+            "h-24 sm:h-28 px-4 pt-4 flex items-start justify-between rounded-b-[28px]",
+            theme === "sepia"
+              ? "bg-gradient-to-b from-[#e9d9c5] via-[#e4d1b7] to-[#dec7a7]"
+              : "bg-gradient-to-b from-primary/15 via-primary/20 to-primary/30"
+          )}
+        >
+          <button
+            onClick={() => router.push("/library")}
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20 transition backdrop-blur-sm shadow-sm"
+          >
+            <ArrowLeft size={18} className="text-foreground" />
+          </button>
 
-        <BottomSheet>
-          <BottomSheetTrigger>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition backdrop-blur-sm">
-              <MoreHorizontal size={20} className={themeStyle.text} />
-            </div>
-          </BottomSheetTrigger>
+          <BottomSheet>
+            <BottomSheetTrigger>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20 transition backdrop-blur-sm shadow-sm">
+                <MoreHorizontal size={18} className="text-foreground" />
+              </div>
+            </BottomSheetTrigger>
           <BottomSheetContent className="bg-[#18181A] text-white border-white/5">
             <div className="p-4 pt-2">
               {/* Drawer Header */}
@@ -645,6 +687,7 @@ export default function ReaderPage() {
             </div>
           </BottomSheetContent>
         </BottomSheet>
+        </div>
       </div>
 
       {/* ─── Reading Layout Panels (Voice, Settings, Chapters etc) ─── */}
@@ -887,14 +930,10 @@ export default function ReaderPage() {
       {/* ─── Reading content ─── */}
       <div
         ref={contentRef}
-        className="flex-1 overflow-y-auto px-6 sm:px-12 py-6 relative outline-none pb-[280px]"
+        className="flex-1 overflow-y-auto px-6 sm:px-10 pt-5 relative outline-none pb-[320px]"
         onClick={() => panel && setPanel(null)}
       >
-        <div className="max-w-3xl mx-auto">
-          <p className="text-muted-foreground text-sm font-medium mb-8">
-            {new Date().toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric'})}
-          </p>
-
+        <div className="max-w-2xl mx-auto">
           {extracting ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 size={24} className="animate-spin text-primary mb-3" />
@@ -904,17 +943,31 @@ export default function ReaderPage() {
             </div>
           ) : chapter ? (
             <article>
-              <h1 className={cn("text-4xl sm:text-5xl font-bold mb-10 text-balance", themeStyle.text)}>
-                {chapter.title}
+              <h1
+                className={cn("text-[2rem] sm:text-4xl font-bold mb-3 text-balance leading-[1.1] tracking-tight", themeStyle.text)}
+                style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
+              >
+                {book.title}
               </h1>
-              <div style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}>
+              <p className={cn("text-xs font-semibold uppercase tracking-[0.18em] mb-8", theme === "dark" ? "text-white/50" : "text-foreground/50")}>
+                Chapter {currentChapter + 1} <span className="mx-2 opacity-40">·</span> {chapter.title}
+              </p>
+              <div
+                style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}
+                className="first-letter:float-left first-letter:text-[4em] first-letter:font-bold first-letter:leading-[0.82] first-letter:pr-3 first-letter:pt-1 first-letter:text-primary"
+              >
                 {sentences.map((sentence, sIdx) => {
                   const isActiveSentence = sIdx === currentSentence;
                   if (isActiveSentence && currentWord >= 0) {
                     const words = sentence.split(/(\s+)/);
                     let wordCounter = -1;
                     return (
-                      <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("cursor-pointer rounded transition-colors duration-200", themeStyle.text)}>
+                      <span
+                        key={sIdx}
+                        data-sentence={sIdx}
+                        onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }}
+                        className="cursor-pointer rounded transition-colors duration-200 text-primary"
+                      >
                         {words.map((part, pIdx) => {
                           const isSpace = /^\s+$/.test(part);
                           if (!isSpace) wordCounter++;
@@ -924,11 +977,7 @@ export default function ReaderPage() {
                               key={pIdx}
                               className={cn(
                                 "transition-colors duration-150",
-                                isActiveWord
-                                  ? "bg-[#22c55e] text-white rounded px-1 py-0.5"
-                                  : wordCounter < currentWord && !isSpace
-                                    ? "opacity-60"
-                                    : ""
+                                isActiveWord ? "font-semibold underline decoration-primary/50 underline-offset-4" : ""
                               )}
                             >{part}</span>
                           );
@@ -937,7 +986,16 @@ export default function ReaderPage() {
                     );
                   }
                   return (
-                    <span key={sIdx} data-sentence={sIdx} onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }} className={cn("transition-colors duration-200 cursor-pointer hover:bg-primary/10 rounded", isActiveSentence ? "bg-[#22c55e]/15 rounded px-0.5" : "", themeStyle.text)}>
+                    <span
+                      key={sIdx}
+                      data-sentence={sIdx}
+                      onClick={(e) => { e.stopPropagation(); handleSentenceClick(sIdx); }}
+                      className={cn(
+                        "transition-colors duration-200 cursor-pointer rounded",
+                        isActiveSentence ? "text-primary" : themeStyle.text,
+                        !isActiveSentence && "hover:text-primary"
+                      )}
+                    >
                       {sentence}{" "}
                     </span>
                   );
@@ -950,178 +1008,111 @@ export default function ReaderPage() {
         </div>
       </div>
 
-      {/* ─── Speechify-style bottom controls ─── */}
-      <div className={cn(
-        "shrink-0 backdrop-blur-xl z-30 px-4 pt-3 pb-5",
-        theme === "dark" ? "bg-[#1a1a2e]/95 border-t border-white/5" :
-        theme === "sepia" ? "bg-[#f4ecd8]/95 border-t border-[#d4c5a9]/50" :
-        "bg-white/95 border-t border-border/40"
-      )}>
-        <div className="max-w-2xl mx-auto space-y-3">
-          {/* Scrubber */}
-          <div className="flex items-center gap-3">
-            <span className={cn("text-[11px] font-semibold tabular-nums w-10 text-right", themeStyle.text)}>
-              {formatTime(player.currentTime)}
-            </span>
-            <div
-              className={cn(
-                "flex-1 h-1 rounded-full relative cursor-pointer group",
-                theme === "dark" ? "bg-white/10" : "bg-black/10"
-              )}
-              onClick={(e) => {
-                if (!player.duration) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                const ratio = (e.clientX - rect.left) / rect.width;
-                player.seek(ratio * player.duration);
-              }}
+      {/* ─── Waveform player card (reference-style, theme-aware) ─── */}
+      <div className="absolute left-3 right-3 bottom-3 z-30 pointer-events-none">
+        <div
+          className={cn(
+            "pointer-events-auto rounded-[28px] shadow-2xl backdrop-blur-xl px-5 pt-4 pb-5",
+            theme === "dark"
+              ? "bg-[#1f1f2e]/95 border border-white/5"
+              : theme === "sepia"
+                ? "bg-[#eedfc4]/95 border border-[#d4c5a9]/60"
+                : "bg-card/95 border border-border/50"
+          )}
+        >
+          <div className="max-w-2xl mx-auto">
+            {/* Chapter label */}
+            <p
+              className={cn("text-center font-bold text-base mb-2 truncate", themeStyle.text)}
+              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
             >
-              <div
-                className="h-full rounded-full bg-[#22c55e] group-hover:bg-[#16a34a] transition-colors relative"
-                style={{ width: `${player.duration > 0 ? (player.currentTime / player.duration) * 100 : 0}%` }}
-              >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-[#22c55e] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" />
-              </div>
-            </div>
-            <span className={cn("text-[11px] font-semibold tabular-nums w-10 text-left opacity-60", themeStyle.text)}>
-              {formatTime(player.duration)}
-            </span>
-          </div>
+              {chapter?.title ?? `Chapter ${currentChapter + 1}`}
+            </p>
 
-          {/* 5-button control row */}
-          <div className="flex items-center justify-around">
-            <button
-              onClick={() => setSleepTimer(sleepTimer > 0 ? 0 : 15)}
-              className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center transition",
-                sleepTimer > 0
-                  ? "bg-primary text-primary-foreground"
-                  : theme === "dark" ? "text-white/70 hover:bg-white/5" : "text-foreground/70 hover:bg-black/5"
-              )}
-              title="Sleep timer"
-            >
-              <Timer size={20} />
-            </button>
+            {/* Waveform scrubber */}
+            <WaveformScrubber
+              currentTime={player.currentTime}
+              duration={player.duration}
+              onSeek={(ratio) => player.duration && player.seek(ratio * player.duration)}
+              formatTime={formatTime}
+              theme={theme}
+            />
 
-            <button
-              onClick={() => goRelativeTime(-15)}
-              disabled={!player.duration}
-              className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
-                theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-black/5"
-              )}
-              title="Back 15s"
-            >
-              <div className="relative flex items-center justify-center">
-                <RotateCcw size={24} />
-                <span className="absolute text-[9px] font-black">15</span>
-              </div>
-            </button>
-
-            <button
-              onClick={handlePlay}
-              disabled={tts.status === "loading" || !chapter}
-              className={cn(
-                "w-16 h-16 rounded-full flex items-center justify-center transition shadow-xl disabled:opacity-50",
-                theme === "dark"
-                  ? "bg-white text-black hover:scale-105"
-                  : "bg-foreground text-background hover:scale-105"
-              )}
-            >
-              {tts.status === "loading" ? (
-                <Loader2 size={26} className="animate-spin" />
-              ) : player.playing ? (
-                <Pause size={26} strokeWidth={2.5} />
-              ) : (
-                <Play size={26} strokeWidth={2.5} className="ml-1" />
-              )}
-            </button>
-
-            <button
-              onClick={() => goRelativeTime(30)}
-              disabled={!player.duration}
-              className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
-                theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-black/5"
-              )}
-              title="Forward 30s"
-            >
-              <div className="relative flex items-center justify-center">
-                <RotateCw size={24} />
-                <span className="absolute text-[9px] font-black">30</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => {
-                const ticks = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-                const next = ticks[(ticks.indexOf(tts.speed) + 1) % ticks.length] ?? 1.0;
-                tts.changeSpeed(next);
-              }}
-              className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center text-xs font-black transition tabular-nums",
-                theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-black/5"
-              )}
-              title="Speed"
-            >
-              {tts.speed}×
-            </button>
-          </div>
-
-          {/* Voice pill + chapters + bookmark */}
-          <div className="flex items-center justify-between gap-2">
-            <button
-              onClick={() => togglePanel("voice")}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full transition",
-                theme === "dark" ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"
-              )}
-            >
-              <Volume2 size={14} className={themeStyle.text} />
-              <span className={cn("text-xs font-semibold capitalize", themeStyle.text)}>
-                {tts.voice.replace(/^(af|am|bf|bm)_/, "")}
-              </span>
-            </button>
-
-            <div className="flex items-center gap-1">
+            {/* 5-button row */}
+            <div className="flex items-center justify-between mt-4">
               <button
-                onClick={() => goChapter(-1)}
-                disabled={currentChapter === 0}
+                onClick={() => togglePanel("settings")}
                 className={cn(
-                  "w-9 h-9 rounded-full flex items-center justify-center transition disabled:opacity-30",
-                  theme === "dark" ? "text-white/60 hover:bg-white/5" : "text-foreground/60 hover:bg-black/5"
+                  "w-11 h-11 rounded-full flex items-center justify-center transition",
+                  theme === "dark" ? "text-white/70 hover:bg-white/5" : "text-foreground/70 hover:bg-foreground/5"
+                )}
+                title="Display"
+              >
+                <Type size={18} />
+                <span className="sr-only">Aa</span>
+              </button>
+
+              <button
+                onClick={() => goRelativeTime(-10)}
+                disabled={!player.duration}
+                className={cn(
+                  "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
+                  theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-foreground/5"
+                )}
+                title="Back 10s"
+              >
+                <div className="relative flex items-center justify-center">
+                  <RotateCcw size={22} strokeWidth={2} />
+                  <span className="absolute text-[8px] font-black">10</span>
+                </div>
+              </button>
+
+              <button
+                onClick={handlePlay}
+                disabled={tts.status === "loading" || !chapter}
+                className={cn(
+                  "w-[58px] h-[58px] rounded-full flex items-center justify-center transition shadow-xl disabled:opacity-50 bg-primary text-primary-foreground hover:scale-105 active:scale-95"
                 )}
               >
-                <ChevronLeft size={18} />
-              </button>
-              <span className={cn("text-[11px] font-semibold tabular-nums px-1", themeStyle.text)}>
-                {currentChapter + 1}/{chapters.length}
-              </span>
-              <button
-                onClick={() => goChapter(1)}
-                disabled={currentChapter === chapters.length - 1}
-                className={cn(
-                  "w-9 h-9 rounded-full flex items-center justify-center transition disabled:opacity-30",
-                  theme === "dark" ? "text-white/60 hover:bg-white/5" : "text-foreground/60 hover:bg-black/5"
+                {tts.status === "loading" ? (
+                  <Loader2 size={24} className="animate-spin" />
+                ) : player.playing ? (
+                  <Pause size={24} strokeWidth={2.5} />
+                ) : (
+                  <Play size={24} strokeWidth={2.5} className="ml-0.5" />
                 )}
+              </button>
+
+              <button
+                onClick={() => goRelativeTime(30)}
+                disabled={!player.duration}
+                className={cn(
+                  "w-11 h-11 rounded-full flex items-center justify-center transition disabled:opacity-30",
+                  theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-foreground/5"
+                )}
+                title="Forward 30s"
               >
-                <ChevronRight size={18} />
+                <div className="relative flex items-center justify-center">
+                  <RotateCw size={22} strokeWidth={2} />
+                  <span className="absolute text-[8px] font-black">30</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  const ticks = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+                  const next = ticks[(ticks.indexOf(tts.speed) + 1) % ticks.length] ?? 1.0;
+                  tts.changeSpeed(next);
+                }}
+                className={cn(
+                  "w-11 h-11 rounded-full flex items-center justify-center text-[13px] font-black transition tabular-nums",
+                  theme === "dark" ? "text-white/80 hover:bg-white/5" : "text-foreground/80 hover:bg-foreground/5"
+                )}
+                title="Speed"
+              >
+                {tts.speed}×
               </button>
             </div>
-
-            <button
-              onClick={() => togglePanel("chapters")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-full transition",
-                panel === "chapters"
-                  ? "bg-primary text-primary-foreground"
-                  : theme === "dark" ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"
-              )}
-            >
-              <List size={14} className={panel === "chapters" ? "" : themeStyle.text} />
-              <span className={cn("text-xs font-semibold", panel === "chapters" ? "" : themeStyle.text)}>
-                Chapters
-              </span>
-            </button>
           </div>
         </div>
       </div>
