@@ -1002,8 +1002,21 @@ export default function ReaderPage() {
                 })}
               </div>
             </article>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <p className={cn("font-semibold", themeStyle.text)}>Couldn&apos;t open this book</p>
+              <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
+              <div className="flex gap-2 mt-2">
+                <button onClick={loadBook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
+                  Retry
+                </button>
+                <button onClick={() => router.push("/library")} className="px-4 py-2 rounded-lg bg-muted text-foreground text-sm font-semibold">
+                  Back to library
+                </button>
+              </div>
+            </div>
           ) : (
-            <p className="text-muted-foreground py-20">No content to display</p>
+            <p className="text-muted-foreground py-20 text-center">No content to display</p>
           )}
         </div>
       </div>

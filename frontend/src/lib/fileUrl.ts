@@ -1,29 +1,14 @@
-const PROXY_FALLBACK = (r2Key: string) => `/api/files/${r2Key}`;
-
-const cache = new Map<string, { url: string; expiresAt: number }>();
-
 /**
- * Resolve a download URL for a given r2Key. Prefers a presigned R2 URL
- * (direct browser → R2, one network hop). Falls back to the Next.js proxy
- * if signing fails or the browser is offline.
+ * Resolve a download URL for a given r2Key.
+ *
+ * We use the same-origin proxy (`/api/files/<key>`) rather than a presigned
+ * direct-to-R2 URL. Direct R2 fetches require CORS configuration on the
+ * bucket which our current token can't set. The proxy streams bytes from
+ * R2 and supports HTTP Range requests, so pdfjs can still open pages
+ * progressively without waiting for the whole PDF.
  */
 export async function getFileUrl(r2Key: string): Promise<string> {
-  const hit = cache.get(r2Key);
-  if (hit && hit.expiresAt > Date.now() + 60_000) return hit.url;
-
-  try {
-    const res = await fetch("/api/files/sign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ r2Key, op: "get" }),
-    });
-    if (!res.ok) throw new Error("sign failed");
-    const { url, expiresIn } = (await res.json()) as { url: string; expiresIn: number };
-    cache.set(r2Key, { url, expiresAt: Date.now() + expiresIn * 1000 });
-    return url;
-  } catch {
-    return PROXY_FALLBACK(r2Key);
-  }
+  return `/api/files/${r2Key}`;
 }
 
 export async function getUploadUrlFor(r2Key: string, contentType: string): Promise<string> {

@@ -31,9 +31,13 @@ export async function GET(
 
     const BUCKET = process.env.R2_BUCKET_NAME!;
 
+    // Forward client Range header to R2 so pdfjs can open pages progressively
+    const rangeHeader = req.headers.get("range") ?? undefined;
+
     const command = new GetObjectCommand({
       Bucket: BUCKET,
       Key: objectKey,
+      ...(rangeHeader ? { Range: rangeHeader } : {}),
     });
 
     const response = await r2.send(command);
@@ -42,16 +46,19 @@ export async function GET(
       return NextResponse.json({ error: "Object body is empty" }, { status: 404 });
     }
 
-    // Convert S3's ReadableStream into a DOM ReadableStream for Next.js response
     const stream = response.Body.transformToWebStream();
 
     const headers = new Headers();
     if (response.ContentType) headers.set("Content-Type", response.ContentType);
     if (response.ContentLength) headers.set("Content-Length", response.ContentLength.toString());
-    // Give generous cache headers so it doesn't get repeatedly downloaded
+    if (response.ContentRange) headers.set("Content-Range", response.ContentRange);
+    if (response.AcceptRanges) headers.set("Accept-Ranges", response.AcceptRanges);
+    else headers.set("Accept-Ranges", "bytes");
     headers.set("Cache-Control", "public, max-age=86400, immutable");
 
-    return new NextResponse(stream, { headers });
+    // 206 Partial Content when Range was served; 200 otherwise
+    const status = rangeHeader && response.ContentRange ? 206 : 200;
+    return new NextResponse(stream, { status, headers });
   } catch (error: any) {
     console.error("Proxy file fetch error:", error);
     return NextResponse.json({ error: "File not found or access denied" }, { status: 404 });
