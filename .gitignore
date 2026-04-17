@@ -27,6 +27,7 @@ coverage/
 .env.*.local
 .env.production
 .env.development
+env/
 
 # ─── Certificates & keys ─────────────────────────────────────
 *.pem
