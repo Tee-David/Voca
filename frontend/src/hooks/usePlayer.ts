@@ -18,6 +18,7 @@ export function usePlayer() {
   const queueRef = useRef<(Blob | ArrayBuffer)[]>([]);
   const playingIdx = useRef(0);
   const frameRef = useRef<number>();
+  const onQueueEndRef = useRef<(() => void) | null>(null);
 
   const [state, setState] = useState<PlayerState>({
     playing: false,
@@ -91,6 +92,8 @@ export function usePlayer() {
       playBuffer(queueRef.current[playingIdx.current]);
     } else {
       setState((s) => ({ ...s, playing: false, currentTime: 0 }));
+      // Fire queue-end callback (used for auto-chapter-advance)
+      onQueueEndRef.current?.();
     }
   }, [playBuffer]);
 
@@ -174,6 +177,10 @@ export function usePlayer() {
     [playBuffer, resetQueue]
   );
 
+  const setOnQueueEnd = useCallback((fn: (() => void) | null) => {
+    onQueueEndRef.current = fn;
+  }, []);
+
   return {
     ...state,
     play,
@@ -185,5 +192,6 @@ export function usePlayer() {
     resetQueue,
     setMeta,
     playSingleBuffer,
+    setOnQueueEnd,
   };
 }

@@ -48,6 +48,40 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Handle voice transcription (FormData with audio file)
+  const contentType = req.headers.get("content-type") || "";
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const formData = await req.formData();
+      const file = formData.get("file") as File | null;
+      if (!file) {
+        return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
+      }
+      const whisperForm = new FormData();
+      whisperForm.append("file", file, file.name);
+      whisperForm.append("model", "whisper-large-v3-turbo");
+      whisperForm.append("response_format", "json");
+      whisperForm.append("language", "en");
+
+      const whisperRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+        body: whisperForm,
+      });
+      if (!whisperRes.ok) {
+        const errText = await whisperRes.text();
+        console.error("Whisper API error:", whisperRes.status, errText);
+        return NextResponse.json({ error: "Transcription failed" }, { status: 502 });
+      }
+      const whisperData = await whisperRes.json();
+      return NextResponse.json({ task: "transcribe", result: whisperData.text || "" });
+    } catch (error: any) {
+      console.error("Whisper transcription failed:", error);
+      return NextResponse.json({ error: "Transcription failed" }, { status: 502 });
+    }
+  }
+
+  // Handle standard AI tasks (JSON body)
   const body: AiRequestBody = await req.json();
   const { task, context, question, chapterTitle } = body;
 

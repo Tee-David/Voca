@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Copy, RefreshCw, Loader2, Sparkles, Send, Zap, Cpu } from "lucide-react";
+import { X, Copy, RefreshCw, Loader2, Sparkles, Send, Zap, Cpu, Mic } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAI } from "@/hooks/useAI";
@@ -58,6 +58,12 @@ export function AIPanel({
   const [chatQuery, setChatQuery] = useState("");
   const [chatEmbeddings, setChatEmbeddings] = useState<{ text: string; vector: number[] }[]>([]);
   const [pendingQuery, setPendingQuery] = useState("");
+
+  // Voice-to-text (whisper) state
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const currentFlow = useRef<"embedding" | "asking" | null>(null);
 
   const effectiveStatus = useCloud ? groqStatus : ai.status;
@@ -332,9 +338,57 @@ export function AIPanel({
             </div>
 
             <div className="flex items-center gap-2 mt-auto">
+              <button
+                onClick={async () => {
+                  if (recording) {
+                    // Stop recording
+                    mediaRecorderRef.current?.stop();
+                    setRecording(false);
+                    return;
+                  }
+                  // Start recording
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+                    mediaRecorderRef.current = mediaRecorder;
+                    audioChunksRef.current = [];
+                    mediaRecorder.ondataavailable = (e) => {
+                      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+                    };
+                    mediaRecorder.onstop = async () => {
+                      stream.getTracks().forEach((t) => t.stop());
+                      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+                      if (audioBlob.size < 1000) return; // too short
+                      setTranscribing(true);
+                      try {
+                        const formData = new FormData();
+                        formData.append("file", audioBlob, "voice.webm");
+                        formData.append("task", "transcribe");
+                        const res = await fetch("/api/ai", { method: "POST", body: formData });
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.result) setChatQuery((prev) => prev + data.result);
+                        }
+                      } catch { /* ignore transcription errors */ }
+                      setTranscribing(false);
+                    };
+                    mediaRecorder.start();
+                    setRecording(true);
+                  } catch {
+                    // Microphone permission denied
+                  }
+                }}
+                className={cn(
+                  "w-11 h-11 flex items-center justify-center rounded-xl transition shrink-0",
+                  recording ? "bg-red-500 text-white animate-pulse" : transcribing ? "bg-primary/20 text-primary" : cn(themeStyle.buttonBg, themeStyle.text)
+                )}
+                title={recording ? "Stop recording" : "Voice input"}
+              >
+                {transcribing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
+              </button>
               <input
                 type="text"
-                placeholder="Ask a question..."
+                placeholder={recording ? "Listening..." : "Ask a question..."}
                 value={chatQuery}
                 onChange={(e) => setChatQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitChat()}
@@ -343,7 +397,7 @@ export function AIPanel({
               <button
                 onClick={submitChat}
                 disabled={!chatQuery.trim() || isLoading}
-                className="w-11 h-11 flex items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
+                className="w-11 h-11 flex items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-50 shrink-0"
               >
                 <Send size={16} />
               </button>

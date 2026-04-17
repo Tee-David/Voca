@@ -21,8 +21,13 @@ export async function POST(req: NextRequest) {
   // Step 2: Confirm upload — create the book record
   if (body.confirm && body.r2Key) {
     const { r2Key, title: rawTitle, fileName, fileType, fileSize } = body;
-    const title = rawTitle
-      || toTitleCase((fileName ?? "Untitled").replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim());
+    const cleanName = (fileName ?? "Untitled")
+      .replace(/\.[^/.]+$/, "") // remove extension
+      .replace(/[_-]+/g, " ") // underscores/dashes to spaces
+      .replace(/(\b[A-Fa-f0-9]{20,}\b|\bToaz\.info\b|\bZ-Library\b|\bPDF\b|\bEPUB\b|\(z-lib\.org\))/ig, "") // strip hashes and common tags
+      .replace(/\s{2,}/g, " ") // compress spaces
+      .trim();
+    const title = rawTitle || toTitleCase(cleanName);
 
     const book = await db.book.create({
       data: {

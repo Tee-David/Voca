@@ -1,5 +1,17 @@
 "use client";
 
+/**
+ * PlayerPill — Floating audio playback widget for the reader.
+ *
+ * Phase 12d Style Isolation Audit:
+ * - Audited: no global CSS bleeds into this component. All styles are scoped
+ *   via Tailwind utility classes and the `cn()` helper.
+ * - No wildcard selectors or `:not()` rules in globals.css affect this component.
+ * - Shadow DOM wrapping is NOT needed for the current use case (reader-only).
+ *   If this component is ever reused outside the app shell (e.g. browser extension),
+ *   wrap it in a Shadow DOM custom element at that point.
+ * - Decision: skip Shadow DOM, document this audit. ✓
+ */
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, Loader2, RotateCcw, RotateCw, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,8 +28,8 @@ interface PlayerPillProps {
   currentTime: number;
   duration: number;
   chapterLabel: string;
-  coverUrl?: string | null;
   autoHide?: boolean;
+  forceHide?: boolean;
   onPlay: () => void;
   onSeekRelative: (delta: number) => void;
   onSpeedCycle: () => void;
@@ -42,6 +54,7 @@ export function PlayerPill({
   chapterLabel,
   coverUrl,
   autoHide = true,
+  forceHide = false,
   onPlay,
   onSeekRelative,
   onSpeedCycle,
@@ -55,17 +68,17 @@ export function PlayerPill({
   const wake = () => {
     setHidden(false);
     if (idleRef.current) clearTimeout(idleRef.current);
-    if (!autoHide || !playing) return;
+    if (!autoHide || !playing || forceHide) return;
     idleRef.current = setTimeout(() => setHidden(true), 3000);
   };
 
   useEffect(() => {
     wake();
     return () => { if (idleRef.current) clearTimeout(idleRef.current); };
-  }, [playing, autoHide]);
+  }, [playing, autoHide, forceHide]);
 
   useEffect(() => {
-    if (!autoHide) { setHidden(false); return; }
+    if (!autoHide || forceHide) { setHidden(false); return; }
     const onAny = () => wake();
     window.addEventListener("pointermove", onAny, { passive: true });
     window.addEventListener("touchstart", onAny, { passive: true });
@@ -75,7 +88,7 @@ export function PlayerPill({
       window.removeEventListener("touchstart", onAny);
       window.removeEventListener("keydown", onAny);
     };
-  }, [autoHide, playing]);
+  }, [autoHide, playing, forceHide]);
 
   const ratio = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const trackBg = theme === "dark" ? "bg-white/10" : theme === "sepia" ? "bg-[#5b4636]/15" : "bg-foreground/10";
@@ -84,9 +97,8 @@ export function PlayerPill({
     <div
       className={cn(
         "fixed z-30 left-1/2 -translate-x-1/2 transition-all duration-300 pointer-events-none",
-        // bottom positioning respects mobile bottom-nav (5rem) + safe area
         "bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:bottom-5",
-        hidden ? "translate-y-[140%] opacity-0" : "translate-y-0 opacity-100"
+        (hidden || forceHide) ? "translate-y-[140%] opacity-0" : "translate-y-0 opacity-100"
       )}
       onPointerDown={() => wake()}
     >

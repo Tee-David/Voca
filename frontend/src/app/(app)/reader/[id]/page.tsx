@@ -39,7 +39,20 @@ import { RecapBanner } from "@/components/reader/RecapBanner";
 import { SheetStackProvider, useSheetStack } from "@/components/ui/sheet-stack";
 import { getCachedEmbeddings, putCachedEmbeddings } from "@/lib/bookCache";
 import { extractParagraphChunks } from "@/lib/embeddings";
+import { estimateTimestamps } from "@/lib/wordSync";
 import { cn } from "@/lib/utils";
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) setMatches(media.matches);
+    const listener = () => setMatches(media.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, [matches, query]);
+  return matches;
+}
 
 type Book = {
   id: string;
@@ -151,6 +164,8 @@ function ReaderPageInner() {
   const prewarmedRef = useRef<Set<number>>(new Set());
   const [titleCardOpen, setTitleCardOpen] = useState(false);
   const [topHidden, setTopHidden] = useState(false);
+
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   const [isFavorite, setIsFavorite] = useState(false);
   const [aiAction, setAiAction] = useState<AiAction | null>(null);
   const [showRecap, setShowRecap] = useState(false);
@@ -465,7 +480,7 @@ function ReaderPageInner() {
     }
   }, [player.chunkIndex, player.playing]);
 
-  // Word-by-word highlight: estimate current word from audio progress
+  // Word-by-word highlight: use character-weighted estimation for accuracy
   useEffect(() => {
     if (currentSentence < 0 || !player.playing || player.duration <= 0) {
       cancelAnimationFrame(wordAnimRef.current);
@@ -478,16 +493,33 @@ function ReaderPageInner() {
     const words = sentenceText.split(/\s+/).filter(Boolean);
     if (words.length === 0) return;
 
+    // Build character-weighted timestamps for this sentence's words
+    const timestamps = estimateTimestamps(words, player.duration);
+
     function tick() {
-      const ratio = player.duration > 0 ? player.currentTime / player.duration : 0;
-      const wordIdx = Math.min(Math.floor(ratio * words.length), words.length - 1);
-      setCurrentWord(wordIdx);
+      const time = player.currentTime;
+      // Find the word at this time using weighted timestamps
+      let wordIdx = 0;
+      for (let i = 0; i < timestamps.length; i++) {
+        if (time >= timestamps[i].start) wordIdx = i;
+        if (time < timestamps[i].end) break;
+      }
+      setCurrentWord(Math.min(wordIdx, words.length - 1));
       wordAnimRef.current = requestAnimationFrame(tick);
     }
     wordAnimRef.current = requestAnimationFrame(tick);
 
     return () => cancelAnimationFrame(wordAnimRef.current);
   }, [currentSentence, player.playing, player.duration, player.currentTime, chapters, currentChapter]);
+
+  // Auto-scroll active sentence into view
+  useEffect(() => {
+    if (currentSentence < 0) return;
+    const el = document.querySelector(`[data-sentence="${currentSentence}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [currentSentence]);
 
   // Pre-warm next chapter when ≥70% through current
   useEffect(() => {
@@ -612,6 +644,20 @@ function ReaderPageInner() {
     setCurrentWord(-1);
   }
 
+  // Auto-advance chapter when playback finishes
+  useEffect(() => {
+    player.setOnQueueEnd(() => {
+      if (currentChapter < chapters.length - 1) {
+        goChapter(1);
+        pendingPlayRef.current = true;
+        // if TTS worker isn't loaded yet for some reason, init it
+        if (tts.status === "idle" || tts.status === "error") {
+             tts.initWorker();
+        }
+      }
+    });
+  }, [currentChapter, chapters.length, player, tts]);
+
   // Play chapter: cache-first with write-through fallback to TTS
   const playChapterNow = useCallback(async () => {
     const chapter = chapters[currentChapter];
@@ -659,6 +705,30 @@ function ReaderPageInner() {
       playChapterNow();
     }
   }, [tts.status, playChapterNow]);
+
+  // Pre-generate next 2 chapters in background for seamless playback (Speechify-style)
+  useEffect(() => {
+    if (tts.status !== "ready" || !book || chapters.length === 0) return;
+    const pregenerate = async () => {
+      for (let offset = 1; offset <= 2; offset++) {
+        const nextIdx = currentChapter + offset;
+        if (nextIdx >= chapters.length) break;
+        const already = await hasCachedAudio(book.id, nextIdx, tts.voice, tts.speed);
+        if (already) continue;
+        // Generate in background — fire-and-forget via the TTS worker
+        const nextChapter = chapters[nextIdx];
+        if (!nextChapter?.text) continue;
+        const spokenText = applyPronunciations(nextChapter.text, pronunciations);
+        const plainText = ssmlToPlainText(parseSSML(spokenText));
+        tts.generate({ text: plainText }, `${book.id}-pregen-ch${nextIdx}`);
+        // Only pre-gen one at a time to avoid overloading
+        break;
+      }
+    };
+    // Delay pre-gen slightly so it doesn't compete with current chapter
+    const timer = setTimeout(pregenerate, 3000);
+    return () => clearTimeout(timer);
+  }, [currentChapter, tts.status, book, chapters, tts, pronunciations]);
 
   function handlePlay() {
     const chapter = chapters[currentChapter];
@@ -1062,42 +1132,45 @@ function ReaderPageInner() {
                 <MoreHorizontal size={18} />
               </div>
             </BottomSheetTrigger>
-          <BottomSheetContent className="bg-[#18181A] text-white border-white/5">
+          <BottomSheetContent className={cn(
+              "border-t",
+              theme === "dark" ? "bg-[#18181A] text-white border-white/5" : theme === "sepia" ? "bg-[#f4ecd8] text-[#5b4636] border-[#d4c5a9]" : "bg-white text-foreground border-border"
+            )}>
             <div className="p-4 pt-2">
               {/* Drawer Header */}
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-14 bg-white/20 rounded shadow-md relative overflow-hidden border border-white/10">
+                  <div className={cn("w-10 h-14 rounded shadow-md relative overflow-hidden border", theme === "dark" ? "bg-white/20 border-white/10" : "bg-muted border-border/40")}>
                     {book.coverUrl && <img src={book.coverUrl} className="w-full h-full object-cover" alt="Cover" />}
                   </div>
                   <h3 className="font-bold text-lg">{chapter?.title || book.title}</h3>
                 </div>
                 <BottomSheetTrigger>
-                  <button className="text-white/60 hover:text-white p-2"><X size={24}/></button>
+                  <button className={cn("p-2", theme === "dark" ? "text-white/60 hover:text-white" : "text-muted-foreground hover:text-foreground")}><X size={24}/></button>
                 </BottomSheetTrigger>
               </div>
 
               {/* Drawer Grid Actions */}
               <div className="grid grid-cols-3 gap-3 mb-8">
-                <button onClick={() => { togglePanel("search"); }} className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
-                  <Search size={24} className="text-white/80" />
+                <button onClick={() => { togglePanel("search"); }} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", theme === "dark" ? "bg-white/5 hover:bg-white/10" : theme === "sepia" ? "bg-[#5b4636]/5 hover:bg-[#5b4636]/10" : "bg-muted hover:bg-muted/70")}>
+                  <Search size={24} className="opacity-80" />
                   <span className="text-xs font-semibold">Search</span>
                 </button>
-                <button onClick={() => togglePanel("voice")} className="flex flex-col items-center gap-2 p-5 bg-white/5 rounded-2xl hover:bg-white/10 transition">
-                  <Mic size={24} className="text-white/80" />
+                <button onClick={() => togglePanel("voice")} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", theme === "dark" ? "bg-white/5 hover:bg-white/10" : theme === "sepia" ? "bg-[#5b4636]/5 hover:bg-[#5b4636]/10" : "bg-muted hover:bg-muted/70")}>
+                  <Mic size={24} className="opacity-80" />
                   <span className="text-xs font-semibold">Change Voice</span>
                 </button>
-                <button onClick={() => setSleepTimer(sleepTimer > 0 ? 0 : 15)} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", sleepTimer > 0 ? "bg-primary text-primary-foreground" : "bg-white/5 hover:bg-white/10")}>
-                  <Timer size={24} className={sleepTimer > 0 ? "scale-110" : "text-white/80"} />
+                <button onClick={() => setSleepTimer(sleepTimer > 0 ? 0 : 15)} className={cn("flex flex-col items-center gap-2 p-5 rounded-2xl transition", sleepTimer > 0 ? "bg-primary text-primary-foreground" : theme === "dark" ? "bg-white/5 hover:bg-white/10" : theme === "sepia" ? "bg-[#5b4636]/5 hover:bg-[#5b4636]/10" : "bg-muted hover:bg-muted/70")}>
+                  <Timer size={24} className={sleepTimer > 0 ? "scale-110" : "opacity-80"} />
                   <span className="text-xs font-semibold">{sleepTimer > 0 ? `${Math.ceil(sleepRemaining / 60)}m left` : "Sleep timer"}</span>
                 </button>
               </div>
 
               {/* AI chips (mobile fallback for desktop AiRail) */}
               <div className="lg:hidden mb-6">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-white/40 mb-2">AI tools</p>
+                <p className={cn("text-[10px] uppercase tracking-wider font-bold mb-2", theme === "dark" ? "text-white/40" : "text-muted-foreground")}>AI tools</p>
                 <AiRail
-                  theme="dark"
+                  theme={theme}
                   variant="chips"
                   active={aiAction}
                   onSelect={(a) => { setAiAction(a); setPanel("ai"); }}
@@ -1107,19 +1180,19 @@ function ReaderPageInner() {
               {/* PDF view-mode toggle (moved from old top strip) */}
               {book?.fileType === "pdf" && (
                 <div className="mb-4 flex items-center gap-2">
-                  <span className="text-[11px] uppercase tracking-wider font-bold text-white/40 mr-1">View</span>
+                  <span className={cn("text-[11px] uppercase tracking-wider font-bold mr-1", theme === "dark" ? "text-white/40" : "text-muted-foreground")}>View</span>
                   <button
                     onClick={() => setViewMode("text")}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition",
-                      viewMode === "text" ? "bg-primary text-primary-foreground" : "bg-white/5 text-white/70 hover:bg-white/10"
+                      viewMode === "text" ? "bg-primary text-primary-foreground" : theme === "dark" ? "bg-white/5 text-white/70 hover:bg-white/10" : "bg-muted text-muted-foreground hover:bg-muted/70"
                     )}
                   ><AlignLeft size={13} /> Text</button>
                   <button
                     onClick={() => setViewMode("pdf")}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition",
-                      viewMode === "pdf" ? "bg-primary text-primary-foreground" : "bg-white/5 text-white/70 hover:bg-white/10"
+                      viewMode === "pdf" ? "bg-primary text-primary-foreground" : theme === "dark" ? "bg-white/5 text-white/70 hover:bg-white/10" : "bg-muted text-muted-foreground hover:bg-muted/70"
                     )}
                   ><FileText size={13} /> Original PDF</button>
                 </div>
@@ -1127,30 +1200,30 @@ function ReaderPageInner() {
 
               {/* Vertical Actions */}
               <div className="flex flex-col gap-1">
-                <button onClick={() => togglePanel("settings")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
-                  <Type size={20} className="text-white/60" />
+                <button onClick={() => togglePanel("settings")} className={cn("flex items-center gap-4 p-4 rounded-xl transition w-full text-left", theme === "dark" ? "hover:bg-white/5" : "hover:bg-muted")}>
+                  <Type size={20} className="opacity-60" />
                   <span className="text-sm font-semibold">Hide text</span>
                 </button>
-                <button onClick={() => togglePanel("bookmarks")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
-                  <Bookmark size={20} className="text-white/60" />
+                <button onClick={() => togglePanel("bookmarks")} className={cn("flex items-center gap-4 p-4 rounded-xl transition w-full text-left", theme === "dark" ? "hover:bg-white/5" : "hover:bg-muted")}>
+                  <Bookmark size={20} className="opacity-60" />
                   <span className="text-sm font-semibold">Bookmarks</span>
                 </button>
-                <button onClick={() => togglePanel("pronunciations")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
-                  <List size={20} className="text-white/60" />
+                <button onClick={() => togglePanel("pronunciations")} className={cn("flex items-center gap-4 p-4 rounded-xl transition w-full text-left", theme === "dark" ? "hover:bg-white/5" : "hover:bg-muted")}>
+                  <List size={20} className="opacity-60" />
                   <div className="flex flex-col">
                     <span className="text-sm font-semibold">Pronunciations</span>
                     {pronunciations.length > 0 && (
-                      <span className="text-[11px] text-white/40">{pronunciations.length} rule{pronunciations.length === 1 ? "" : "s"} active</span>
+                      <span className="text-[11px] text-muted-foreground">{pronunciations.length} rule{pronunciations.length === 1 ? "" : "s"} active</span>
                     )}
                   </div>
                 </button>
                 <button
                   onClick={downloadForOffline}
                   disabled={!!downloadState?.active || tts.status === 'loading'}
-                  className="flex items-center justify-between p-4 hover:bg-white/5 rounded-xl transition w-full text-left disabled:opacity-60"
+                  className={cn("flex items-center justify-between p-4 rounded-xl transition w-full text-left disabled:opacity-60", theme === "dark" ? "hover:bg-white/5" : "hover:bg-muted")}
                 >
                   <div className="flex items-center gap-4">
-                    <Download size={20} className="text-white/60" />
+                    <Download size={20} className="opacity-60" />
                     <div className="flex flex-col">
                       <span className="text-sm font-semibold">Download for offline</span>
                       {downloadState?.active ? (
@@ -1158,7 +1231,7 @@ function ReaderPageInner() {
                           Chapter {downloadState.chapterIdx + 1} of {downloadState.total}…
                         </span>
                       ) : cachedChaptersSet.size > 0 ? (
-                        <span className="text-[11px] text-white/40">
+                        <span className="text-[11px] text-muted-foreground">
                           {cachedChaptersSet.size}/{chapters.length} chapters cached
                         </span>
                       ) : null}
@@ -1168,8 +1241,8 @@ function ReaderPageInner() {
                     <Loader2 size={16} className="animate-spin text-primary" />
                   )}
                 </button>
-                <button onClick={() => togglePanel("settings")} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-xl transition w-full text-left">
-                  <Settings2 size={20} className="text-white/60" />
+                <button onClick={() => togglePanel("settings")} className={cn("flex items-center gap-4 p-4 rounded-xl transition w-full text-left", theme === "dark" ? "hover:bg-white/5" : "hover:bg-muted")}>
+                  <Settings2 size={20} className="opacity-60" />
                   <span className="text-sm font-semibold">Preferences</span>
                 </button>
               </div>
@@ -1183,9 +1256,17 @@ function ReaderPageInner() {
       <AnimatePresence>
         {panel === "voice" && (
           <motion.div
-            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+            initial={isDesktop ? { x: "100%" } : { x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+            className={cn(
+              "absolute z-30 overflow-y-auto overflow-x-hidden p-4",
+              isDesktop
+                ? "top-0 right-0 bottom-0 w-[380px] border-l shadow-[-20px_0_40px_rgba(0,0,0,0.08)]"
+                : "inset-0",
+              themeStyle.bg
+            )}
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className={cn("font-bold", themeStyle.text)}>Voice & Speed</h3>
@@ -1221,7 +1302,8 @@ function ReaderPageInner() {
             initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
             className={cn(
-              "absolute z-30 top-0 bottom-0 left-0 w-[min(92vw,360px)] overflow-y-auto border-r",
+              "absolute z-30 top-0 bottom-0 left-0 overflow-y-auto overflow-x-hidden border-r",
+              isDesktop ? "w-[380px]" : "w-[min(92vw,360px)]",
               theme === "dark" ? "bg-[#1a1a2e] border-white/8" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-card border-border/60"
             )}
             style={{ boxShadow: "var(--shadow-float)" }}
@@ -1288,9 +1370,17 @@ function ReaderPageInner() {
       <AnimatePresence>
         {panel === "search" && (
           <motion.div
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            initial={isDesktop ? { x: "100%" } : { y: "100%" }}
+            animate={isDesktop ? { x: 0 } : { y: 0 }}
+            exit={isDesktop ? { x: "100%" } : { y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+            className={cn(
+              "absolute z-30 overflow-y-auto overflow-x-hidden p-4",
+              isDesktop
+                ? "top-0 right-0 bottom-0 w-[380px] border-l shadow-[-20px_0_40px_rgba(0,0,0,0.08)]"
+                : "inset-0",
+              themeStyle.bg
+            )}
           >
             <div className="flex items-center gap-2 mb-4">
               <Search size={16} className="text-muted-foreground" />
@@ -1343,9 +1433,17 @@ function ReaderPageInner() {
       <AnimatePresence>
         {panel === "pronunciations" && (
           <motion.div
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            initial={isDesktop ? { x: "100%" } : { y: "100%" }}
+            animate={isDesktop ? { x: 0 } : { y: 0 }}
+            exit={isDesktop ? { x: "100%" } : { y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+            className={cn(
+              "absolute z-30 overflow-y-auto overflow-x-hidden p-4",
+              isDesktop
+                ? "top-0 right-0 bottom-0 w-[380px] border-l shadow-[-20px_0_40px_rgba(0,0,0,0.08)]"
+                : "inset-0",
+              themeStyle.bg
+            )}
           >
             <div className="flex items-center justify-between mb-1">
               <h3 className={cn("font-bold", themeStyle.text)}>Pronunciations</h3>
@@ -1404,9 +1502,17 @@ function ReaderPageInner() {
       <AnimatePresence>
         {panel === "bookmarks" && (
           <motion.div
-            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+            initial={isDesktop ? { x: "100%" } : { x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute inset-0 z-30 overflow-y-auto p-4", themeStyle.bg)}
+            className={cn(
+              "absolute z-30 overflow-y-auto overflow-x-hidden p-4",
+              isDesktop
+                ? "top-0 right-0 bottom-0 w-[380px] border-l shadow-[-20px_0_40px_rgba(0,0,0,0.08)]"
+                : "inset-0",
+              themeStyle.bg
+            )}
           >
             <div className="flex items-center justify-between mb-3">
               <h3 className={cn("font-bold", themeStyle.text)}>Bookmarks</h3>
@@ -1446,19 +1552,24 @@ function ReaderPageInner() {
       <AnimatePresence>
         {panel === "settings" && (
           <motion.div
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            initial={isDesktop ? { x: "100%" } : { y: "100%" }}
+            animate={isDesktop ? { x: 0 } : { y: 0 }}
+            exit={isDesktop ? { x: "100%" } : { y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className={cn(
-              "absolute bottom-0 inset-x-0 z-30 border-t rounded-t-[var(--radius-sheet)] p-5 max-h-[85vh] overflow-y-auto",
+              "absolute z-30 overflow-y-auto overflow-x-hidden",
+              isDesktop 
+                ? "top-0 right-0 bottom-0 w-[380px] border-l shadow-[-20px_0_40px_rgba(0,0,0,0.08)]" 
+                : "bottom-0 inset-x-0 border-t rounded-t-[var(--radius-sheet)] max-h-[85vh]",
               theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border"
             )}
-            style={{ boxShadow: "var(--shadow-float)" }}
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 sticky top-0 z-10 backdrop-blur-xl px-5 pt-5 pb-2">
               <h3 className={cn("font-bold text-base", themeStyle.text)}>Reader settings</h3>
               <button onClick={() => setPanel(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
 
+            <div className="px-5 pb-8">
             {/* ── Appearance ── */}
             <SectionLabel theme={theme}>Appearance</SectionLabel>
             <div className="mb-3 grid grid-cols-3 gap-1.5 p-1 rounded-full bg-muted/40">
@@ -1608,6 +1719,7 @@ function ReaderPageInner() {
                 </p>
               )}
             </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1687,6 +1799,7 @@ function ReaderPageInner() {
               >
                 {sentences.map((sentence, sIdx) => {
                   const isActiveSentence = sIdx === currentSentence;
+                  const isPlaying = currentSentence >= 0; // Any sentence is active = playback mode
                   if (isActiveSentence && currentWord >= 0) {
                     const words = sentence.split(/(\s+)/);
                     let wordCounter = -1;
@@ -1695,7 +1808,14 @@ function ReaderPageInner() {
                         key={sIdx}
                         data-sentence={sIdx}
                         onClick={(e) => handleSentenceClickOrWord(e, sIdx, sentence)}
-                        className="cursor-pointer rounded transition-colors duration-200 text-primary"
+                        className={cn(
+                          "cursor-pointer rounded-md transition-all duration-300 px-0.5 py-0.5",
+                          theme === "dark"
+                            ? "bg-white/8 text-white"
+                            : theme === "sepia"
+                            ? "bg-[#5b4636]/8 text-[#5b4636]"
+                            : "bg-primary/8 text-foreground"
+                        )}
                       >
                         {words.map((part, pIdx) => {
                           const isSpace = /^\s+$/.test(part);
@@ -1705,8 +1825,12 @@ function ReaderPageInner() {
                             <span
                               key={pIdx}
                               className={cn(
-                                "transition-colors duration-150",
-                                isActiveWord ? "font-semibold underline decoration-primary/50 underline-offset-4" : ""
+                                "transition-all duration-150",
+                                isActiveWord
+                                  ? "font-bold text-primary bg-primary/15 rounded px-0.5 underline decoration-2 decoration-primary/40 underline-offset-4"
+                                  : !isSpace && wordCounter < currentWord
+                                  ? "opacity-70" // Already-read words dim
+                                  : ""
                               )}
                             >{part}</span>
                           );
@@ -1720,9 +1844,12 @@ function ReaderPageInner() {
                       data-sentence={sIdx}
                       onClick={(e) => handleSentenceClickOrWord(e, sIdx, sentence)}
                       className={cn(
-                        "transition-colors duration-200 cursor-pointer rounded",
-                        isActiveSentence ? "text-primary" : themeStyle.text,
-                        !isActiveSentence && "hover:text-primary"
+                        "transition-all duration-300 cursor-pointer rounded",
+                        isActiveSentence
+                          ? "text-primary"
+                          : isPlaying
+                          ? cn("opacity-40", themeStyle.text) // Dim inactive text during playback for focus
+                          : cn(themeStyle.text, "hover:text-primary")
                       )}
                     >
                       {sentence}{" "}
@@ -1782,8 +1909,8 @@ function ReaderPageInner() {
         currentTime={player.currentTime}
         duration={player.duration}
         chapterLabel={chapter?.title ?? `Chapter ${currentChapter + 1}`}
-        coverUrl={book?.coverUrl}
         autoHide={autoHidePlayer}
+        forceHide={!isDesktop && !!panel}
         onPlay={handlePlay}
         onSeekRelative={goRelativeTime}
         onSpeedCycle={() => {
@@ -1826,10 +1953,17 @@ function ReaderPageInner() {
       <AnimatePresence>
         {panel === "download" && book && chapters.length > 0 && (
           <motion.div
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            initial={isDesktop ? { x: "100%" } : { y: "100%" }}
+            animate={isDesktop ? { x: 0 } : { y: 0 }}
+            exit={isDesktop ? { x: "100%" } : { y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={cn("absolute bottom-0 inset-x-0 z-40 border-t rounded-t-3xl p-5 max-h-[80vh] overflow-y-auto",
-              theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border")}
+            className={cn(
+              "absolute z-40 overflow-y-auto overflow-x-hidden p-5",
+              isDesktop
+                ? "top-0 right-0 bottom-0 w-[380px] border-l shadow-[-20px_0_40px_rgba(0,0,0,0.08)]"
+                : "bottom-0 inset-x-0 border-t rounded-t-3xl max-h-[80vh]",
+              theme === "dark" ? "bg-[#1a1a2e] border-white/10" : theme === "sepia" ? "bg-[#f4ecd8] border-[#d4c5a9]" : "bg-white border-border"
+            )}
           >
             <div className="flex items-center justify-between mb-3">
               <h3 className={cn("font-bold", themeStyle.text)}>Export audiobook</h3>

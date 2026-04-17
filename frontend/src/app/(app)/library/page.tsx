@@ -606,31 +606,6 @@ export default function LibraryPage() {
           ))}
         </div>
       )}
-
-      {/* ─── Quick Tips (only if few books) ─── */}
-      {!loading && books.length > 0 && books.length <= 3 && (
-        <div className="mt-10 rounded-2xl border border-border bg-card p-6">
-          <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-            <TrendingUp size={15} className="text-primary" />
-            Getting Started
-          </h3>
-          <div className="grid sm:grid-cols-3 gap-4">
-            {[
-              { title: "Upload documents", desc: "Drag & drop PDF, EPUB, TXT, or DOCX files into your library" },
-              { title: "Listen with AI voices", desc: "Choose from 9 natural voices and adjust speed to your preference" },
-              { title: "Export audiobooks", desc: "Convert any document to an audiobook you can download and play anywhere" },
-            ].map(({ title, desc }) => (
-              <div key={title} className="flex gap-3">
-                <div className="w-1 rounded-full bg-primary/30 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
