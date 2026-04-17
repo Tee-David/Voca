@@ -73,7 +73,6 @@ async function extractPdf(
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
   const pdf = await pdfjsLib.getDocument(url).promise;
-
   const outline = (await pdf.getOutline()) as OutlineItem[] | null;
 
   const pageTexts: string[] = [];
@@ -96,21 +95,17 @@ async function extractPdf(
     await runOcrOnPages(pdf, emptyPageIndices, pageTexts, onProgress);
   }
 
-  // If we have an outline, use it for chapter boundaries
   if (outline && outline.length > 0) {
     const chapterPages = dedupeAndSortOutline(await resolveOutlinePages(pdf, outline));
     if (chapterPages.length > 0) {
       const fromOutline = buildChaptersFromOutline(chapterPages, pageTexts, pdf.numPages);
       if (fromOutline.length > 1) return fromOutline;
-      // Outline collapsed to a single chapter — try heuristic for finer structure.
     }
   }
 
-  // Fallback: heuristic chapter detection by looking for heading-like patterns
   const heuristicChapters = detectChaptersHeuristically(pageTexts);
   if (heuristicChapters.length > 1) return heuristicChapters;
 
-  // Final fallback: group every ~5 pages
   return groupPages(pageTexts, 5);
 }
 

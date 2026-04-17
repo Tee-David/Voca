@@ -6,7 +6,8 @@ import {
   ArrowLeft, ChevronLeft, ChevronRight, List, Settings2,
   Loader2, Minus, Plus, Play, Pause, Volume2, Bookmark,
   BookmarkCheck, Moon, Sun, Type, Download, Timer, X,
-  SkipBack, SkipForward, Maximize2, RotateCcw, RotateCw, MessageSquare, Search, MoreHorizontal
+  SkipBack, SkipForward, Maximize2, RotateCcw, RotateCw, MessageSquare, Search, MoreHorizontal,
+  FileText, AlignLeft
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BottomSheet, BottomSheetTrigger, BottomSheetContent } from "@/components/ui/bottom-sheet";
@@ -113,6 +114,7 @@ export default function ReaderPage() {
   const [deleting, setDeleting] = useState(false);
   const [downloadState, setDownloadState] = useState<{ active: boolean; chapterIdx: number; total: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"text" | "pdf">("text");
   const [pronunciations, setPronunciations] = useState<Pronunciation[]>([]);
   const [newPronFrom, setNewPronFrom] = useState("");
   const [newPronTo, setNewPronTo] = useState("");
@@ -676,6 +678,35 @@ export default function ReaderPage() {
             <ArrowLeft size={18} className="text-foreground" />
           </button>
 
+          {book?.fileType === "pdf" && (
+            <div className="flex items-center gap-1 p-1 rounded-full bg-white/70 dark:bg-white/10 backdrop-blur-sm shadow-sm">
+              <button
+                onClick={() => setViewMode("text")}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition",
+                  viewMode === "text"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground/70 hover:text-foreground"
+                )}
+                title="Text view (for TTS)"
+              >
+                <AlignLeft size={13} /> Text
+              </button>
+              <button
+                onClick={() => setViewMode("pdf")}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition",
+                  viewMode === "pdf"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground/70 hover:text-foreground"
+                )}
+                title="Original PDF"
+              >
+                <FileText size={13} /> PDF
+              </button>
+            </div>
+          )}
+
           <BottomSheet>
             <BottomSheetTrigger>
               <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20 transition backdrop-blur-sm shadow-sm">
@@ -1026,6 +1057,15 @@ export default function ReaderPage() {
         className="flex-1 overflow-y-auto px-6 sm:px-10 pt-5 relative outline-none pb-[320px]"
         onClick={() => panel && setPanel(null)}
       >
+        {viewMode === "pdf" && book?.fileType === "pdf" ? (
+          <div className="absolute inset-x-0 top-0 bottom-[300px] sm:bottom-[280px] px-2 sm:px-4">
+            <iframe
+              src={`/api/files/${book.r2Key}#zoom=page-width`}
+              title={book.title}
+              className="w-full h-full rounded-2xl shadow-lg border border-border/40 bg-white"
+            />
+          </div>
+        ) : (
         <div className="max-w-2xl mx-auto">
           {extracting ? (
             <div className="flex flex-col items-center justify-center py-20">
@@ -1160,6 +1200,7 @@ export default function ReaderPage() {
             <p className="text-muted-foreground py-20 text-center">No content to display</p>
           )}
         </div>
+        )}
       </div>
 
       {/* ─── Waveform player card (reference-style, theme-aware) ─── */}
