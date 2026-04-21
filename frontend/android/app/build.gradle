@@ -2,8 +2,13 @@ apply plugin: 'com.android.application'
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
+def keystoreReady = false
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    if (keystoreProperties['storeFile']) {
+        def ksFile = file(keystoreProperties['storeFile'])
+        keystoreReady = ksFile.exists()
+    }
 }
 
 android {
@@ -23,8 +28,8 @@ android {
         }
     }
     signingConfigs {
-        release {
-            if (keystoreProperties['storeFile']) {
+        if (keystoreReady) {
+            release {
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
@@ -36,7 +41,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (keystoreProperties['storeFile']) {
+            if (keystoreReady) {
                 signingConfig signingConfigs.release
             }
         }
