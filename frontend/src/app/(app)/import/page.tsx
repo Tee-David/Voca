@@ -69,7 +69,7 @@ export default function ImportPage() {
       });
       if (!confirmRes.ok) throw new Error("Failed to save book");
       const book = await confirmRes.json();
-      router.push(`/reader/${book.id}`);
+      router.push(`/reader?id=${book.id}`);
     } catch (e: any) {
       setError(e.message || "Upload failed");
     } finally {

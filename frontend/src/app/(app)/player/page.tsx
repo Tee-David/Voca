@@ -410,7 +410,7 @@ export default function PlayerPage() {
 
         {chapters.length === 0 && (
           <Link
-            href={`/reader/${book.id}`}
+            href={`/reader?id=${book.id}`}
             className="mt-6 text-xs text-primary font-semibold hover:underline"
           >
             Open in Reader to load text →
@@ -444,7 +444,7 @@ export default function PlayerPage() {
                       Open the book in the reader to load chapters
                     </p>
                     <Link
-                      href={`/reader/${book.id}`}
+                      href={`/reader?id=${book.id}`}
                       className="block text-center text-sm text-primary font-semibold py-2"
                     >
                       Open in Reader →

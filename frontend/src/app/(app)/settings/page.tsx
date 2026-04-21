@@ -110,7 +110,11 @@ function ProfileSection() {
       <div className="mt-8 pt-6 border-t border-border">
         <p className="text-sm font-medium text-foreground mb-3">Danger Zone</p>
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={async () => {
+            const { clearStoredAuthToken } = await import("@/lib/authToken");
+            await clearStoredAuthToken();
+            signOut({ callbackUrl: "/login" });
+          }}
           className="px-4 py-2 rounded-xl text-sm font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition"
         >
           Sign out

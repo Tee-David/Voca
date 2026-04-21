@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft, List, Settings2,
   Loader2, Minus, Plus, Bookmark,
@@ -121,7 +121,11 @@ export default function ReaderView() {
 }
 
 function ReaderPageInner() {
-  const { id } = useParams<{ id: string }>();
+  const routeParams = useParams<{ id?: string }>();
+  const searchParams = useSearchParams();
+  const paramId = routeParams?.id && routeParams.id !== "_" ? routeParams.id : null;
+  const queryId = searchParams?.get("id") ?? null;
+  const id = paramId ?? queryId ?? "";
   const router = useRouter();
   const sheets = useSheetStack();
 

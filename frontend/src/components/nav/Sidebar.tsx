@@ -152,7 +152,11 @@ export function Sidebar() {
           <motion.button
             animate={{ opacity: expanded ? 1 : 0, scale: expanded ? 1 : 0 }}
             transition={{ duration: 0.15 }}
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={async () => {
+              const { clearStoredAuthToken } = await import("@/lib/authToken");
+              await clearStoredAuthToken();
+              signOut({ callbackUrl: "/login" });
+            }}
             className="p-1 text-muted-foreground hover:text-destructive transition shrink-0"
             title="Sign out"
           >

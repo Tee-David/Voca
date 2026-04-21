@@ -41,7 +41,7 @@ export function MiniPlayer({
 
       <div className="flex items-center gap-3 px-4 py-2">
         {/* Book info */}
-        <Link href={`/reader/${bookId}`} className="flex-1 min-w-0">
+        <Link href={`/reader?id=${bookId}`} className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-foreground truncate">
             {bookTitle || "Unknown"}
           </p>

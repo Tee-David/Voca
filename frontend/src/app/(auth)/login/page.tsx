@@ -6,8 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, ArrowRight, Loader2, WifiOff, RefreshCw, Check } from "lucide-react";
 import { VocaMark } from "@/components/brand/VocaLogo";
+import { apiFetch } from "@/lib/api";
+import { persistAuthToken } from "@/lib/authToken";
 
 const HF_URL = process.env.NEXT_PUBLIC_HF_TTS_URL || "";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 function LoginForm() {
   const router = useRouter();
@@ -42,6 +45,29 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    if (API_BASE) {
+      try {
+        const res = await apiFetch("/api/auth/mobile-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.token) {
+          setError(data?.error || "Invalid email or password");
+          setLoading(false);
+          return;
+        }
+        await persistAuthToken(data.token);
+        router.push(callbackUrl);
+      } catch {
+        setError("Network error — please try again");
+        setLoading(false);
+      }
+      return;
+    }
+
     const res = await signIn("credentials", { email, password, redirect: false });
     if (res?.error) {
       setError("Invalid email or password");

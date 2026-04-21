@@ -87,7 +87,7 @@ export default function BooksPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((book) => (
-            <Link key={book.id} href={`/reader/${book.id}`}>
+            <Link key={book.id} href={`/reader?id=${book.id}`}>
               <div className="flex items-center gap-4 p-3 rounded-2xl bg-card hover:bg-muted/40 border border-border/30 transition">
                 {/* Thumbnail */}
                 <div className="w-14 h-18 sm:w-16 sm:h-20 rounded-lg overflow-hidden shrink-0 shadow-sm">

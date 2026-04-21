@@ -345,7 +345,7 @@ export default function LibraryPage() {
 
 
       {/* ─── Curved book gallery ─── */}
-      {books.length > 0 && <CoverGallery books={books} onOpen={(id) => router.push(`/reader/${id}`)} />}
+      {books.length > 0 && <CoverGallery books={books} onOpen={(id) => router.push(`/reader?id=${id}`)} />}
 
       {/* ─── Stats Cards ─── */}
       {!stats && loading ? (
@@ -381,7 +381,7 @@ export default function LibraryPage() {
             {continueReading.map((book) => (
               <button
                 key={book.id}
-                onClick={() => router.push(`/reader/${book.id}`)}
+                onClick={() => router.push(`/reader?id=${book.id}`)}
                 className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-accent/50 transition text-left group"
               >
                 <div
@@ -569,7 +569,7 @@ export default function LibraryPage() {
               onDelete={() => deleteBook(book.id)}
               onRename={() => renameBook(book.id, book.title)}
               onOcr={() => runOcrFor(book.id)}
-              onOpen={() => router.push(`/reader/${book.id}`)}
+              onOpen={() => router.push(`/reader?id=${book.id}`)}
             />
           ))}
 
@@ -602,7 +602,7 @@ export default function LibraryPage() {
               onDelete={() => deleteBook(book.id)}
               onRename={() => renameBook(book.id, book.title)}
               onOcr={() => runOcrFor(book.id)}
-              onOpen={() => router.push(`/reader/${book.id}`)}
+              onOpen={() => router.push(`/reader?id=${book.id}`)}
             />
           ))}
         </div>

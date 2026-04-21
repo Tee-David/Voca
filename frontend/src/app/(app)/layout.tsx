@@ -1,21 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { Sidebar } from "@/components/nav/Sidebar";
 import { TopBar } from "@/components/nav/TopBar";
+import { loadStoredAuthToken } from "@/lib/authToken";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { status } = useSession();
+  const [mobileToken, setMobileToken] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    if (status === "unauthenticated") router.replace("/login");
-  }, [status, router]);
+    loadStoredAuthToken().then(setMobileToken);
+  }, []);
 
-  if (status !== "authenticated") return null;
+  useEffect(() => {
+    if (mobileToken === undefined) return;
+    if (status === "unauthenticated" && !mobileToken) router.replace("/login");
+  }, [status, mobileToken, router]);
+
+  if (mobileToken === undefined) return null;
+  if (status !== "authenticated" && !mobileToken) return null;
 
   return (
     <div className="min-h-dvh bg-background">
