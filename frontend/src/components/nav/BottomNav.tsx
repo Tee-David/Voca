@@ -16,26 +16,29 @@ export function BottomNav() {
 
   // Hide on reader pages — reader has its own nav
   if (pathname.startsWith("/reader/")) return null;
+  const hideFab = pathname.startsWith("/import");
 
   return (
     <>
       {/* Floating + FAB — bottom-right, above nav */}
-      <Link
-        href="/import"
-        aria-label="Import new content"
-        className={cn(
-          "lg:hidden fixed z-50 flex items-center justify-center",
-          "right-4 bottom-[calc(4rem+env(safe-area-inset-bottom)+0.5rem)]",
-          "w-14 h-14 rounded-full",
-          "bg-primary text-primary-foreground",
-          "shadow-[0_8px_28px_-6px_rgba(67,56,202,0.5)]",
-          "hover:shadow-[0_12px_36px_-6px_rgba(67,56,202,0.6)]",
-          "active:scale-95",
-          "transition-all duration-200"
-        )}
-      >
-        <Plus size={24} strokeWidth={2.5} />
-      </Link>
+      {!hideFab && (
+        <Link
+          href="/import"
+          aria-label="Import new content"
+          className={cn(
+            "lg:hidden fixed z-50 flex items-center justify-center",
+            "right-4 bottom-[calc(4rem+env(safe-area-inset-bottom)+0.5rem)]",
+            "w-14 h-14 rounded-full",
+            "bg-primary text-primary-foreground",
+            "shadow-[0_8px_28px_-6px_rgba(67,56,202,0.5)]",
+            "hover:shadow-[0_12px_36px_-6px_rgba(67,56,202,0.6)]",
+            "active:scale-95",
+            "transition-all duration-200"
+          )}
+        >
+          <Plus size={24} strokeWidth={2.5} />
+        </Link>
+      )}
 
       {/* Bottom navigation bar */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-background/95 dark:bg-card/95 backdrop-blur-xl border-t border-border/40">
