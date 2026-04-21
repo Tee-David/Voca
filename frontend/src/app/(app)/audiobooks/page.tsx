@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Headphones, Loader2, Play, Download, Clock, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 type Audiobook = {
   id: string;
@@ -29,7 +30,7 @@ export default function AudiobooksPage() {
   useEffect(() => {
     async function fetchAudiobooks() {
       try {
-        const res = await fetch("/api/audiobooks");
+        const res = await apiFetch("/api/audiobooks");
         if (res.ok) setAudiobooks(await res.json());
       } finally {
         setLoading(false);

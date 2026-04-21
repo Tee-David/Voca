@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export async function PATCH(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionUser = await getSessionUser(req);
+  if (!sessionUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { name } = await req.json();
-  const user = await db.user.update({
-    where: { id: session.user.id },
+  const updated = await db.user.update({
+    where: { id: sessionUser.id },
     data: { name: name || null },
     select: { id: true, name: true, email: true },
   });
 
-  return NextResponse.json({ user });
+  return NextResponse.json({ user: updated });
 }

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { BookCardV2 } from "@/components/library/BookCardV2";
 import { SortDropdown } from "@/components/library/SortDropdown";
 import { LibraryGridSkeleton, BookRowSkeleton, StatsSkeleton } from "@/components/ui/Skeleton";
+import { apiFetch } from "@/lib/api";
 
 type Book = {
   id: string;
@@ -115,7 +116,7 @@ export default function LibraryPage() {
   const fetchBooks = useCallback(async () => {
     try {
       const filter = typeFilter === "all" || typeFilter === "favorites" ? "" : `?filter=${typeFilter}`;
-      const res = await fetch(`/api/library${filter}`);
+      const res = await apiFetch(`/api/library${filter}`);
       if (res.ok) {
         let data: Book[] = await res.json();
         if (typeFilter === "favorites") data = data.filter((b) => b.isFavorite);
@@ -140,7 +141,7 @@ export default function LibraryPage() {
   }, [menuBookId]);
 
   useEffect(() => {
-    fetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
+    apiFetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
   }, []);
 
   async function uploadFile(file: File) {
@@ -148,7 +149,7 @@ export default function LibraryPage() {
     setUploadProgress(0);
 
     try {
-      const res = await fetch("/api/upload", {
+      const res = await apiFetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -184,7 +185,7 @@ export default function LibraryPage() {
 
       setUploadProgress(85);
 
-      const confirmRes = await fetch("/api/upload", {
+      const confirmRes = await apiFetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirm: true, r2Key, fileName: file.name, fileType, fileSize: file.size }),
@@ -194,7 +195,7 @@ export default function LibraryPage() {
 
       setUploadProgress(100);
       await fetchBooks();
-      fetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
+      apiFetch("/api/stats").then((r) => r.ok ? r.json() : null).then(setStats).catch(() => {});
     } catch {
       alert("Upload failed. Please try again.");
     } finally {
@@ -217,7 +218,7 @@ export default function LibraryPage() {
   }
 
   async function toggleFavorite(bookId: string, current: boolean) {
-    await fetch(`/api/library/${bookId}`, {
+    await apiFetch(`/api/library/${bookId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isFavorite: !current }),
@@ -230,7 +231,7 @@ export default function LibraryPage() {
 
   async function deleteBook(bookId: string) {
     if (!confirm("Delete this book? This cannot be undone.")) return;
-    await fetch(`/api/library/${bookId}`, { method: "DELETE" });
+    await apiFetch(`/api/library/${bookId}`, { method: "DELETE" });
     setBooks((prev) => prev.filter((b) => b.id !== bookId));
     setMenuBookId(null);
   }
@@ -239,7 +240,7 @@ export default function LibraryPage() {
     const next = window.prompt("Rename book", currentTitle)?.trim();
     setMenuBookId(null);
     if (!next || next === currentTitle) return;
-    const res = await fetch(`/api/library/${bookId}`, {
+    const res = await apiFetch(`/api/library/${bookId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: next }),
@@ -251,7 +252,7 @@ export default function LibraryPage() {
   async function runOcrFor(bookId: string) {
     setMenuBookId(null);
     if (!confirm("Run OCR on this PDF? This can take a few minutes.")) return;
-    const res = await fetch(`/api/library/${bookId}/ocr`, {
+    const res = await apiFetch(`/api/library/${bookId}/ocr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ language: "eng" }),

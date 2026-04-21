@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/lib/r2";
 import { db } from "@/lib/db";
@@ -9,8 +9,8 @@ export async function GET(
   { params }: { params: Promise<{ key: string[] }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getSessionUser(req);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -22,7 +22,7 @@ export async function GET(
     }
 
     const owns = await db.book.findFirst({
-      where: { r2Key: objectKey, userId: session.user.id },
+      where: { r2Key: objectKey, userId: user.id },
       select: { id: true },
     });
     if (!owns) {
@@ -72,8 +72,8 @@ export async function PUT(
   { params }: { params: Promise<{ key: string[] }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getSessionUser(req);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -85,7 +85,7 @@ export async function PUT(
     }
 
     // Validate the key belongs to this user (path format: pdfs/<userId>/...)
-    const expectedPrefix = `pdfs/${session.user.id}/`;
+    const expectedPrefix = `pdfs/${user.id}/`;
     if (!objectKey.startsWith(expectedPrefix)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

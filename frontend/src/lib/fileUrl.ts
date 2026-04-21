@@ -1,3 +1,5 @@
+import { apiFetch, apiUrl } from "@/lib/api";
+
 /**
  * Resolve a download URL for a given r2Key.
  *
@@ -8,13 +10,12 @@
  * progressively without waiting for the whole PDF.
  */
 export async function getFileUrl(r2Key: string): Promise<string> {
-  // Must encode each path segment, otherwise filenames with '#' or '?' break the route
   const encodedPath = r2Key.split("/").map(encodeURIComponent).join("/");
-  return `/api/files/${encodedPath}`;
+  return apiUrl(`/api/files/${encodedPath}`);
 }
 
 export async function getUploadUrlFor(r2Key: string, contentType: string): Promise<string> {
-  const res = await fetch("/api/files/sign", {
+  const res = await apiFetch("/api/files/sign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ r2Key, op: "put", contentType }),

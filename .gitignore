@@ -64,3 +64,6 @@ next-env.d.ts
 # ─── Prisma generated client (per-env) ───────────────────────
 frontend/src/generated/prisma/
 inspo/
+
+# ─── Local-only scratch / planning ───────────────────────────
+plans/

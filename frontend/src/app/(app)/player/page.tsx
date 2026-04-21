@@ -18,6 +18,7 @@ import { useKokoro } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
 import { extractText, extractPdfCover, type Chapter } from "@/lib/extract";
 import { getFileUrl } from "@/lib/fileUrl";
+import { apiFetch } from "@/lib/api";
 
 type Book = {
   id: string;
@@ -65,7 +66,7 @@ export default function PlayerPage() {
       if (!book) return;
       const percent = totalChapters > 0 ? Math.round(((chapIdx + 1) / totalChapters) * 100) : 0;
       const elapsed = listenStartRef.current > 0 ? Math.round((Date.now() - listenStartRef.current) / 1000) : 0;
-      fetch("/api/progress", {
+      apiFetch("/api/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -85,8 +86,8 @@ export default function PlayerPage() {
     (async () => {
       try {
         const [libRes, prefRes] = await Promise.all([
-          fetch("/api/library?sort=opened&limit=1"),
-          fetch("/api/user/preferences"),
+          apiFetch("/api/library?sort=opened&limit=1"),
+          apiFetch("/api/user/preferences"),
         ]);
         if (!libRes.ok) return;
         const books: Book[] = await libRes.json();
@@ -120,7 +121,7 @@ export default function PlayerPage() {
           getFileUrl(b.r2Key).then((fileUrl) => extractPdfCover(fileUrl)).then((coverUrl) => {
             if (coverUrl && !cancelled) {
               setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
-              fetch(`/api/library/${b.id}/cover`, {
+              apiFetch(`/api/library/${b.id}/cover`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ coverUrl }),

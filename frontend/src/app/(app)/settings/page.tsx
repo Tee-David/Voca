@@ -9,6 +9,7 @@ import {
   RefreshCw, Calendar, BarChart2,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { apiFetch } from "@/lib/api";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Section = "profile" | "security" | "preferences" | "users";
@@ -62,7 +63,7 @@ function ProfileSection() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const res = await fetch("/api/user/profile", {
+    const res = await apiFetch("/api/user/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
@@ -134,7 +135,7 @@ function SecuritySection() {
     if (newPass !== confirm) { setMessage({ type: "err", text: "Passwords don't match" }); return; }
     if (newPass.length < 8) { setMessage({ type: "err", text: "Password must be at least 8 characters" }); return; }
     setLoading(true);
-    const res = await fetch("/api/user/password", {
+    const res = await apiFetch("/api/user/password", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentPassword: current, newPassword: newPass }),
@@ -201,7 +202,7 @@ function PreferencesSection() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch("/api/user/preferences")
+    apiFetch("/api/user/preferences")
       .then((r) => r.json())
       .then((prefs) => {
         if (prefs.defaultVoice) setVoice(prefs.defaultVoice);
@@ -215,7 +216,7 @@ function PreferencesSection() {
 
   async function handleSave() {
     setSaving(true);
-    const res = await fetch("/api/user/preferences", {
+    const res = await apiFetch("/api/user/preferences", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ defaultVoice: voice, defaultSpeed: speed, autoScroll, highlightWords }),
@@ -323,7 +324,7 @@ function UsersSection() {
   const { data, isLoading, refetch } = useQuery<{ users: UserRow[] }>({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/users");
+      const res = await apiFetch("/api/admin/users");
       if (!res.ok) throw new Error("Forbidden");
       return res.json();
     },
@@ -331,7 +332,7 @@ function UsersSection() {
 
   const deleteUser = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/admin/users/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json()).error);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
@@ -343,7 +344,7 @@ function UsersSection() {
     if (!cEmail || !cPassword) { setCreateErr("Email and password are required"); return; }
     if (cPassword.length < 8) { setCreateErr("Password must be at least 8 characters"); return; }
     setCreating(true);
-    const res = await fetch("/api/admin/users", {
+    const res = await apiFetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: cName || undefined, email: cEmail, password: cPassword }),

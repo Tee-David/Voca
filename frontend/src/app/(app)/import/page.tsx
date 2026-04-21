@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, Upload, ScanText, Type, Loader2, X, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 const ACTIONS = [
   { icon: Globe, label: "Paste a link", desc: "Import from URL", id: "link" },
@@ -33,7 +34,7 @@ export default function ImportPage() {
     try {
       // Step 1: get presigned upload URL
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "pdf";
-      const presignRes = await fetch("/api/upload", {
+      const presignRes = await apiFetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -55,7 +56,7 @@ export default function ImportPage() {
       if (!putRes.ok) throw new Error("Upload to storage failed");
 
       // Step 3: confirm — create book record
-      const confirmRes = await fetch("/api/upload", {
+      const confirmRes = await apiFetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -84,7 +85,7 @@ export default function ImportPage() {
       if (activeAction === "link") {
         // Phase 8c: Use server-side Readability extraction
         const url = inputValue.trim();
-        const extractRes = await fetch("/api/fetch-article", {
+        const extractRes = await apiFetch("/api/fetch-article", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 type Book = {
   id: string;
@@ -25,7 +26,7 @@ export default function BooksPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch("/api/library")
+    apiFetch("/api/library")
       .then((r) => r.json())
       .then(setBooks)
       .finally(() => setLoading(false));

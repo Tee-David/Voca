@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser();
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const prefs = await db.userPreferences.findUnique({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
   });
 
   if (!prefs) {
     const created = await db.userPreferences.create({
-      data: { userId: session.user.id },
+      data: { userId: user.id },
     });
     return NextResponse.json(created);
   }
@@ -22,8 +22,8 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser(req);
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
@@ -39,8 +39,8 @@ export async function PATCH(req: NextRequest) {
   if (body.emailNotifs !== undefined) allowed.emailNotifs = Boolean(body.emailNotifs);
 
   const prefs = await db.userPreferences.upsert({
-    where: { userId: session.user.id },
-    create: { userId: session.user.id, ...allowed },
+    where: { userId: user.id },
+    create: { userId: user.id, ...allowed },
     update: allowed,
   });
 

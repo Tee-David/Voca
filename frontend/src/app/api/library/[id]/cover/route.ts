@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser(_req);
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
@@ -17,7 +17,7 @@ export async function POST(
     return NextResponse.json({ error: "coverUrl required" }, { status: 400 });
 
   const book = await db.book.update({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
     data: { coverUrl: body.coverUrl },
   });
 

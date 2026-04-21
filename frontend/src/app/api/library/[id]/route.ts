@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { deleteFile } from "@/lib/r2";
 
@@ -7,13 +7,13 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser();
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const book = await db.book.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
     include: {
       progress: true,
       bookmarks: { orderBy: { page: "asc" } },
@@ -31,8 +31,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser();
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
@@ -47,7 +47,7 @@ export async function PATCH(
   if (body.wordCount !== undefined) allowed.wordCount = body.wordCount;
 
   const book = await db.book.update({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
     data: allowed,
   });
 
@@ -58,13 +58,13 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser();
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const book = await db.book.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
   });
 
   if (!book) return NextResponse.json({ error: "Not found" }, { status: 404 });

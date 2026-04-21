@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useAI } from "@/hooks/useAI";
 import { getCachedEmbeddings } from "@/lib/bookCache";
 import { getTopKParagraphs } from "@/lib/embeddings";
+import { apiFetch } from "@/lib/api";
 
 type ReaderTheme = "light" | "dark" | "sepia";
 
@@ -77,7 +78,7 @@ export function AIPanel({
       setGroqError(null);
       setGroqResult(null);
       try {
-        const res = await fetch("/api/ai", {
+        const res = await apiFetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ task, context, question, chapterTitle }),
@@ -155,7 +156,7 @@ export function AIPanel({
     }
 
     try {
-      const res = await fetch("/api/ai", {
+      const res = await apiFetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task: "ask", context: ragContext, question: q }),
@@ -364,7 +365,7 @@ export function AIPanel({
                         const formData = new FormData();
                         formData.append("file", audioBlob, "voice.webm");
                         formData.append("task", "transcribe");
-                        const res = await fetch("/api/ai", { method: "POST", body: formData });
+                        const res = await apiFetch("/api/ai", { method: "POST", body: formData });
                         if (res.ok) {
                           const data = await res.json();
                           if (data.result) setChatQuery((prev) => prev + data.result);

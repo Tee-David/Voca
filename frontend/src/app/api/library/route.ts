@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id)
+    const user = await getSessionUser(req);
+    if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const url = new URL(req.url);
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const sort = url.searchParams.get("sort") || "recent";
 
     const where: Record<string, unknown> = {
-      userId: session.user.id,
+      userId: user.id,
       archivedAt: null,
     };
     if (filter && filter !== "all") where.fileType = filter;

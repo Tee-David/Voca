@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pencil, FolderInput, FileText, Download, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 type ReaderTheme = "light" | "dark" | "sepia";
 
@@ -78,7 +79,7 @@ export function TitleActionCard({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/library/${bookId}`, {
+      const res = await apiFetch(`/api/library/${bookId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: next }),

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { getUploadUrl } from "@/lib/r2";
 
@@ -12,8 +12,8 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 // Step 1: Get presigned URL (no DB record yet)
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id)
+  const user = await getSessionUser(req);
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const book = await db.book.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         title,
         fileType: fileType ?? "pdf",
         r2Key,
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
-  const r2Key = `pdfs/${session.user.id}/${Date.now()}-${fileName}`;
+  const r2Key = `pdfs/${user.id}/${Date.now()}-${fileName}`;
   const uploadUrl = await getUploadUrl(r2Key, contentType);
 
   return NextResponse.json({ uploadUrl, r2Key, fileType });

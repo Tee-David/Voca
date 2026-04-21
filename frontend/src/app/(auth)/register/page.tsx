@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 import { VocaMark } from "@/components/brand/VocaLogo";
+import { apiFetch } from "@/lib/api";
 
 function RegisterForm() {
   const router = useRouter();
@@ -21,7 +22,7 @@ function RegisterForm() {
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/auth/register", {
+    const res = await apiFetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, password }),

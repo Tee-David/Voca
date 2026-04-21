@@ -1,8 +1,17 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+"use client";
 
-export default async function Home() {
-  const session = await auth();
-  if (session) redirect("/library");
-  redirect("/login");
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+
+export default function Home() {
+  const router = useRouter();
+  const { status } = useSession();
+
+  useEffect(() => {
+    if (status === "loading") return;
+    router.replace(status === "authenticated" ? "/library" : "/login");
+  }, [status, router]);
+
+  return null;
 }

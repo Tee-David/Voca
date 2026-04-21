@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 
 const ADMIN_EMAIL = "wedigcreativity@gmail.com";
 
 // DELETE /api/admin/users/[id]
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session || session.user?.email !== ADMIN_EMAIL) {
+  const sessionUser = await getSessionUser(_req);
+  if (!sessionUser || sessionUser.email !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -26,8 +26,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
 // PATCH /api/admin/users/[id] — update name or reset password
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session || session.user?.email !== ADMIN_EMAIL) {
+  const sessionUser = await getSessionUser(req);
+  if (!sessionUser || sessionUser.email !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -41,11 +41,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updateData.password = await bcrypt.hash(body.password, 12);
   }
 
-  const user = await db.user.update({
+  const updated = await db.user.update({
     where: { id },
     data: updateData,
     select: { id: true, name: true, email: true, createdAt: true },
   });
 
-  return NextResponse.json({ user });
+  return NextResponse.json({ user: updated });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
@@ -7,8 +7,8 @@ const ADMIN_EMAIL = "wedigcreativity@gmail.com";
 
 // GET /api/admin/users — list all users with stats
 export async function GET() {
-  const session = await auth();
-  if (!session || session.user?.email !== ADMIN_EMAIL) {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser || sessionUser.email !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -48,8 +48,8 @@ export async function GET() {
 
 // POST /api/admin/users — create a new user directly
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session || session.user?.email !== ADMIN_EMAIL) {
+  const sessionUser = await getSessionUser(req);
+  if (!sessionUser || sessionUser.email !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -68,10 +68,10 @@ export async function POST(req: Request) {
   }
 
   const hashed = await bcrypt.hash(password, 12);
-  const user = await db.user.create({
+  const created = await db.user.create({
     data: { name: name || null, email, password: hashed },
     select: { id: true, name: true, email: true, createdAt: true },
   });
 
-  return NextResponse.json({ user }, { status: 201 });
+  return NextResponse.json({ user: created }, { status: 201 });
 }

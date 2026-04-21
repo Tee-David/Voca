@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 import { getDownloadUrl, getUploadUrl } from "@/lib/r2";
 import { db } from "@/lib/db";
 
@@ -9,8 +9,8 @@ import { db } from "@/lib/db";
  * against the user's library before signing.
  */
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const user = await getSessionUser(req);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   if (op === "get") {
     const owns = await db.book.findFirst({
-      where: { r2Key, userId: session.user.id },
+      where: { r2Key, userId: user.id },
       select: { id: true },
     });
     if (!owns) return NextResponse.json({ error: "Not found" }, { status: 404 });
