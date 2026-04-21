@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { pdfDocumentOptions } from "@/lib/api";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * PageView — Renders PDF pages via pdfjs canvas + TextLayer overlay.
@@ -86,7 +87,7 @@ export function PageView({
     (async () => {
       try {
         const pdfjsLib = await getPdfjs();
-        const doc = await pdfjsLib.getDocument(fileUrl).promise;
+        const doc = await pdfjsLib.getDocument(pdfDocumentOptions(fileUrl)).promise;
         if (cancelled) { doc.destroy(); return; }
         setPdf(doc);
         setNumPages(doc.numPages);

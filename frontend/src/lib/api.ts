@@ -35,3 +35,16 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
   return fetch(apiUrl(path), { ...init, headers, credentials });
 }
+
+/**
+ * Build pdfjs getDocument() options that include the Bearer token on mobile
+ * (cross-origin — where proxy routes reject unauthenticated requests).
+ */
+export function pdfDocumentOptions(url: string): { url: string; httpHeaders?: Record<string, string>; withCredentials?: boolean } {
+  if (!API_BASE || !authToken) return { url };
+  return {
+    url,
+    httpHeaders: { Authorization: `Bearer ${authToken}` },
+    withCredentials: false,
+  };
+}

@@ -4,6 +4,8 @@
  * Also supports PDF cover extraction and TOC detection.
  */
 
+import { pdfDocumentOptions } from "./api";
+
 export type Chapter = {
   title: string;
   text: string;
@@ -39,7 +41,7 @@ export async function extractPdfCover(url: string): Promise<string | null> {
     const pdfjsLib = await import("pdfjs-dist");
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
-    const pdf = await pdfjsLib.getDocument(url).promise;
+    const pdf = await pdfjsLib.getDocument(pdfDocumentOptions(url)).promise;
     const page = await pdf.getPage(1);
 
     const scale = 1.5;
@@ -72,7 +74,7 @@ async function extractPdf(
   const pdfjsLib = await import("pdfjs-dist");
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
-  const pdf = await pdfjsLib.getDocument(url).promise;
+  const pdf = await pdfjsLib.getDocument(pdfDocumentOptions(url)).promise;
   const outline = (await pdf.getOutline()) as OutlineItem[] | null;
 
   const pageTexts: string[] = [];
