@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   User, Shield, Sliders, Users, BookOpen, Headphones,
@@ -53,12 +53,12 @@ function SectionHeader({ icon: Icon, title, subtitle }: { icon: React.ComponentT
 
 // ─── Profile Section ─────────────────────────────────────────────────────────
 function ProfileSection() {
-  const { data: session, update } = useSession();
-  const [name, setName] = useState(session?.user?.name ?? "");
+  const { user: currentUser } = useCurrentUser();
+  const [name, setName] = useState(currentUser?.name ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { setName(session?.user?.name ?? ""); }, [session]);
+  useEffect(() => { setName(currentUser?.name ?? ""); }, [currentUser]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -69,7 +69,6 @@ function ProfileSection() {
       body: JSON.stringify({ name }),
     });
     if (res.ok) {
-      await update({ name });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -92,7 +91,7 @@ function ProfileSection() {
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
           <input
-            value={session?.user?.email ?? ""}
+            value={currentUser?.email ?? ""}
             disabled
             className={inputCls + " opacity-50 cursor-not-allowed"}
           />
@@ -511,9 +510,9 @@ function UsersSection() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { user: currentUser } = useCurrentUser();
   const [active, setActive] = useState<Section>("profile");
-  const isAdmin = session?.user?.email === ADMIN_EMAIL;
+  const isAdmin = currentUser?.email === ADMIN_EMAIL;
 
   const allNav = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
 

@@ -7,9 +7,10 @@ import {
   Home, Plus, Library, Mic, Headphones, Settings, LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { signOut, useSession } from "next-auth/react";
+import { signOut } from "next-auth/react";
 import { VocaMark } from "@/components/brand/VocaLogo";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 
 const navItems = [
   { href: "/library",    label: "Home",        icon: Home },
@@ -25,10 +26,9 @@ const bottomItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
   const [expanded, setExpanded] = useState(false);
 
-  const user = session?.user;
   const initials = user?.name
     ? user.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? "?";

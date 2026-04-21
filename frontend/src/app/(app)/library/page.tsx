@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import {
   Upload, BookOpen, Search, MoreVertical, Star, Trash2,
   FileText, File, Loader2, X, Heart, Clock, Headphones,
@@ -75,7 +75,7 @@ const ACCEPT = ".pdf,.epub,.txt,.docx,application/pdf,application/epub+zip,text/
 
 export default function LibraryPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user: currentUser } = useCurrentUser();
   const fileRef = useRef<HTMLInputElement>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -295,7 +295,7 @@ export default function LibraryPage() {
     })
     .slice(0, 4);
 
-  const firstName = session?.user?.name?.split(" ")[0] || "there";
+  const firstName = currentUser?.name?.split(" ")[0] || "there";
 
   return (
     <div

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { Bell } from "lucide-react";
 import { VocaMark } from "@/components/brand/VocaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 
 const PAGE_TITLES: Record<string, string> = {
   "/library": "Home",
@@ -19,9 +19,8 @@ const PAGE_TITLES: Record<string, string> = {
 
 export function TopBar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
 
-  const user = session?.user;
   const initials = user?.name
     ? user.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? "?";
