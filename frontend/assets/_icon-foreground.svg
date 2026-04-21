@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Adaptive icon foreground: mic-in-oval, transparent background.
+       66% safe zone (inner 676px, 174..850) — the mic assembly fits within this. -->
+
+  <!-- Oval outline -->
+  <ellipse cx="512" cy="442" rx="210" ry="256"
+           fill="none" stroke="#CECBF6" stroke-width="64"/>
+
+  <!-- Chin curve — the little stand below the oval -->
+  <path d="M434 700 Q434 842 512 842 Q590 842 590 700"
+        fill="none" stroke="#CECBF6" stroke-width="44" stroke-linecap="round"/>
+
+  <!-- Mic pill (purple body) -->
+  <rect x="452" y="240" width="120" height="252" rx="60"
+        fill="#AFA9EC"/>
+
+  <!-- Mic center dot (green) -->
+  <rect x="482" y="306" width="60" height="120" rx="30"
+        fill="#1D9E75"/>
+</svg>

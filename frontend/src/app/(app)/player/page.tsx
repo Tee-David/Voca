@@ -107,7 +107,7 @@ export default function PlayerPage() {
           const startPage = b.progress?.currentPage ?? 0;
           setChapterIdx(Math.min(startPage, cached.length - 1));
         } else if (!cancelled) {
-          const fileUrl = await getFileUrl(b.r2Key);
+          const fileUrl = await getFileUrl(b.r2Key, b.id);
           const extracted = await extractText(fileUrl, b.fileType);
           if (!cancelled && extracted.length > 0) {
             setChapters(extracted);
@@ -118,7 +118,7 @@ export default function PlayerPage() {
         }
 
         if (!b.coverUrl && b.fileType === "pdf") {
-          getFileUrl(b.r2Key).then((fileUrl) => extractPdfCover(fileUrl)).then((coverUrl) => {
+          getFileUrl(b.r2Key, b.id).then((fileUrl) => extractPdfCover(fileUrl)).then((coverUrl) => {
             if (coverUrl && !cancelled) {
               setBook((prev) => (prev ? { ...prev, coverUrl } : prev));
               apiFetch(`/api/library/${b.id}/cover`, {

@@ -1,15 +1,19 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import { getOfflineBookBlobUrl } from "@/lib/offline";
 
 /**
  * Resolve a download URL for a given r2Key.
  *
- * We use the same-origin proxy (`/api/files/<key>`) rather than a presigned
- * direct-to-R2 URL. Direct R2 fetches require CORS configuration on the
- * bucket which our current token can't set. The proxy streams bytes from
- * R2 and supports HTTP Range requests, so pdfjs can still open pages
- * progressively without waiting for the whole PDF.
+ * On mobile we first check whether the book has been downloaded for offline —
+ * if so, we return a blob URL backed by the local file. Otherwise we fall back
+ * to the same-origin proxy (`/api/files/<key>`) which streams bytes from R2
+ * with HTTP Range support.
  */
-export async function getFileUrl(r2Key: string): Promise<string> {
+export async function getFileUrl(r2Key: string, bookId?: string): Promise<string> {
+  if (bookId) {
+    const local = await getOfflineBookBlobUrl(bookId);
+    if (local) return local;
+  }
   const encodedPath = r2Key.split("/").map(encodeURIComponent).join("/");
   return apiUrl(`/api/files/${encodedPath}`);
 }

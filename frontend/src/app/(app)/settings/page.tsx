@@ -6,13 +6,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   User, Shield, Sliders, Users, BookOpen, Headphones,
   Bookmark, Eye, EyeOff, Trash2, Plus, X, ChevronRight, Loader2,
-  RefreshCw, Calendar, BarChart2,
+  RefreshCw, Calendar, BarChart2, HardDrive, Download,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { apiFetch } from "@/lib/api";
+import { isNative } from "@/lib/native";
+import { listOfflineBooks, deleteOfflineBook, totalOfflineBytes } from "@/lib/offline";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type Section = "profile" | "security" | "preferences" | "users";
+type Section = "profile" | "security" | "preferences" | "storage" | "users";
 
 const ADMIN_EMAIL = "wedigcreativity@gmail.com";
 
@@ -21,6 +23,8 @@ const NAV = [
   { key: "security" as Section,    label: "Security",     icon: Shield,  desc: "Password and sign-in" },
   { key: "preferences" as Section, label: "Preferences",  icon: Sliders, desc: "Voice, speed, and reading defaults" },
 ];
+
+const STORAGE_NAV = { key: "storage" as Section, label: "Storage", icon: HardDrive, desc: "Manage downloaded books on this device" };
 
 const ADMIN_NAV = [
   { key: "users" as Section, label: "Users", icon: Users, desc: "Manage accounts" },
@@ -508,18 +512,137 @@ function UsersSection() {
   );
 }
 
+// ─── Storage Section (mobile only) ───────────────────────────────────────────
+function StorageSection() {
+  type Row = { bookId: string; fileType: string; size: number; downloadedAt: string; title?: string };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function refresh() {
+    setLoading(true);
+    const entries = await listOfflineBooks();
+    const bytes = await totalOfflineBytes();
+    const withTitles: Row[] = await Promise.all(
+      entries.map(async (e) => {
+        try {
+          const r = await apiFetch(`/api/library/${e.bookId}`);
+          if (r.ok) {
+            const b = (await r.json()) as { title?: string };
+            return { ...e, title: b.title };
+          }
+        } catch { /* ignore */ }
+        return e;
+      })
+    );
+    setRows(withTitles);
+    setTotal(bytes);
+    setLoading(false);
+  }
+
+  useEffect(() => { refresh().catch(() => setLoading(false)); }, []);
+
+  async function remove(bookId: string) {
+    setBusy(bookId);
+    try { await deleteOfflineBook(bookId); await refresh(); }
+    finally { setBusy(null); }
+  }
+
+  async function clearAll() {
+    if (!confirm("Remove every offline book from this device?")) return;
+    for (const r of rows) {
+      try { await deleteOfflineBook(r.bookId); } catch { /* ignore */ }
+    }
+    await refresh();
+  }
+
+  return (
+    <Card>
+      <SectionHeader icon={HardDrive} title="Storage" subtitle="Books downloaded to this device" />
+
+      <div className="mb-6 flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3">
+        <div>
+          <p className="text-xs text-muted-foreground">Used by offline books</p>
+          <p className="text-lg font-semibold text-foreground">{formatBytes(total)}</p>
+        </div>
+        {rows.length > 0 && (
+          <button
+            onClick={clearAll}
+            className="px-3 py-2 text-xs font-semibold rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition"
+          >
+            Free up space
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center text-sm text-muted-foreground">
+          <Loader2 size={16} className="inline animate-spin mr-2" />Loading…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="py-8 text-center">
+          <Download size={22} className="mx-auto mb-2 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Nothing downloaded yet. Long-press a book in the library to save it for offline.
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {rows.map((r) => (
+            <div key={r.bookId} className="flex items-center gap-3 py-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-[10px] uppercase font-bold">
+                {r.fileType}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{r.title ?? r.bookId}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatBytes(r.size)} · downloaded {new Date(r.downloadedAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                disabled={busy === r.bookId}
+                onClick={() => remove(r.bookId)}
+                className="p-2 rounded-lg text-destructive hover:bg-destructive/10 disabled:opacity-50 transition"
+                aria-label="Remove from device"
+              >
+                {busy === r.bookId ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { user: currentUser } = useCurrentUser();
   const [active, setActive] = useState<Section>("profile");
+  const [showStorage, setShowStorage] = useState(false);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
 
-  const allNav = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
+  useEffect(() => { setShowStorage(isNative()); }, []);
+
+  const allNav = [
+    ...NAV,
+    ...(showStorage ? [STORAGE_NAV] : []),
+    ...(isAdmin ? ADMIN_NAV : []),
+  ];
 
   const content: Record<Section, React.ReactNode> = {
     profile: <ProfileSection />,
     security: <SecuritySection />,
     preferences: <PreferencesSection />,
+    storage: <StorageSection />,
     users: <UsersSection />,
   };
 

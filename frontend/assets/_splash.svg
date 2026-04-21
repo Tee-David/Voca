@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <!-- Splash screen: dark bg + mic/oval centered. Same design as icon, scaled. -->
+  <rect width="2732" height="2732" fill="#0b0b0d"/>
+
+  <!-- Centered at (1366, 1366), logo assembly scaled ~1.33x from 1024 icon -->
+  <g transform="translate(854, 908)">
+    <!-- Oval outline -->
+    <ellipse cx="512" cy="442" rx="210" ry="256"
+             fill="none" stroke="#CECBF6" stroke-width="64"/>
+
+    <!-- Chin curve -->
+    <path d="M434 700 Q434 842 512 842 Q590 842 590 700"
+          fill="none" stroke="#CECBF6" stroke-width="44" stroke-linecap="round"/>
+
+    <!-- Mic pill -->
+    <rect x="452" y="240" width="120" height="252" rx="60"
+          fill="#AFA9EC"/>
+
+    <!-- Mic center dot -->
+    <rect x="482" y="306" width="60" height="120" rx="30"
+          fill="#1D9E75"/>
+  </g>
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Legacy launcher icon: dark bg + mic/oval centered. Rounded bezels applied by Android. -->
+  <rect width="1024" height="1024" fill="#0b0b0d"/>
+
+  <!-- Oval outline -->
+  <ellipse cx="512" cy="442" rx="210" ry="256"
+           fill="none" stroke="#CECBF6" stroke-width="64"/>
+
+  <!-- Chin curve -->
+  <path d="M434 700 Q434 842 512 842 Q590 842 590 700"
+        fill="none" stroke="#CECBF6" stroke-width="44" stroke-linecap="round"/>
+
+  <!-- Mic pill -->
+  <rect x="452" y="240" width="120" height="252" rx="60"
+        fill="#AFA9EC"/>
+
+  <!-- Mic center dot -->
+  <rect x="482" y="306" width="60" height="120" rx="30"
+        fill="#1D9E75"/>
+</svg>

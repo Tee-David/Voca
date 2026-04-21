@@ -134,13 +134,35 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    /* Block pull-to-refresh + rubber-banding on native WebView */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
   }
   html {
     @apply font-sans;
+    overscroll-behavior-y: none;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
   }
+  /* Chrome surfaces: no text selection — reader content overrides with .voca-selectable */
+  nav, header, [data-chrome="true"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  button, [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+.voca-selectable,
+.voca-selectable * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 /* GridMotion animated grid */

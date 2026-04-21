@@ -25,6 +25,7 @@ import { parseSSML, ssmlToPlainText, stripSSML, hasSSML } from "@/lib/ssml";
 import { haptic } from "@/lib/haptics";
 import { useKokoro, KOKORO_VOICES, type VoiceId } from "@/hooks/useKokoro";
 import { usePlayer } from "@/hooks/usePlayer";
+import { useMediaControls } from "@/hooks/useMediaControls";
 import { VoiceSelector } from "@/components/reader/VoiceSelector";
 import { SpeedControl } from "@/components/reader/SpeedControl";
 import { AudiobookExport } from "@/components/reader/AudiobookExport";
@@ -259,7 +260,7 @@ function ReaderPageInner() {
       } else {
         setExtracting(true);
         try {
-          const fileUrl = await getFileUrl(data.r2Key);
+          const fileUrl = await getFileUrl(data.r2Key, data.id);
           const extracted = await extractText(fileUrl, data.fileType, (stage, value) =>
             setExtractStage({ stage, value })
           );
@@ -302,7 +303,7 @@ function ReaderPageInner() {
       }
 
       if (data.fileType === "pdf") {
-        getFileUrl(data.r2Key)
+        getFileUrl(data.r2Key, data.id)
           .then((fileUrl) => {
             setPdfFileUrl(fileUrl);
             return extractPdfCover(fileUrl);
@@ -762,6 +763,29 @@ function ReaderPageInner() {
       player.play();
     }
   }
+
+  useMediaControls(
+    {
+      playing: player.playing,
+      bookTitle: book?.title ?? null,
+      chapterTitle: chapters[currentChapter]?.title ?? null,
+      coverUrl: book?.coverUrl ?? null,
+      position: player.currentTime,
+      duration: player.duration,
+    },
+    {
+      onPlay: () => { if (!player.playing) handlePlay(); },
+      onPause: () => { if (player.playing) handlePlay(); },
+      onNext: () => {
+        if (currentChapter < chapters.length - 1) setCurrentChapter((c) => c + 1);
+      },
+      onPrev: () => {
+        if (currentChapter > 0) setCurrentChapter((c) => c - 1);
+      },
+      onStop: () => { if (player.playing) player.pause(); },
+      onSeek: (t) => { if (player.duration) player.seek(t); },
+    }
+  );
 
   // Download all chapters for offline — generate + cache sequentially
   async function downloadForOffline() {
@@ -1804,7 +1828,7 @@ function ReaderPageInner() {
               </p>
               <div
                 style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}
-                className="first-letter:float-left first-letter:text-[4em] first-letter:font-bold first-letter:leading-[0.82] first-letter:pr-3 first-letter:pt-1 first-letter:text-primary"
+                className="voca-selectable first-letter:float-left first-letter:text-[4em] first-letter:font-bold first-letter:leading-[0.82] first-letter:pr-3 first-letter:pt-1 first-letter:text-primary"
               >
                 {sentences.map((sentence, sIdx) => {
                   const isActiveSentence = sIdx === currentSentence;

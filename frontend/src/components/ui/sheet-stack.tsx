@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls, type PanInfo } from "framer-motion";
 import { ChevronLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { onHardwareBack } from "@/lib/native";
 
 type Variant = "bottom" | "right" | "left" | "fullscreen";
 
@@ -82,6 +83,15 @@ export function SheetStackProvider({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [closeTop]);
+
+  // Android hardware back / edge-swipe closes top sheet before router/history.back
+  useEffect(() => {
+    if (stack.length === 0) return;
+    return onHardwareBack(() => {
+      closeTop();
+      return true;
+    });
+  }, [stack.length, closeTop]);
 
   const value = useMemo(
     () => ({ open, push, back, closeAll, closeTop, isOpen, topId }),
@@ -174,7 +184,7 @@ function SheetSurface({
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
         className={cn(
-          "fixed top-0 left-0 bottom-0 z-[1001] w-[min(92vw,360px)] bg-card border-r border-border/60 shadow-2xl flex flex-col",
+          "fixed top-0 left-0 bottom-0 z-[1001] w-[min(92vw,360px)] bg-card border-r border-border/60 shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           isTop ? "" : "pointer-events-none",
           entry.surfaceClassName
         )}
@@ -199,7 +209,7 @@ function SheetSurface({
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
         className={cn(
-          "fixed top-0 right-0 bottom-0 z-[1001] w-[min(100vw,420px)] bg-card border-l border-border/60 shadow-2xl flex flex-col",
+          "fixed top-0 right-0 bottom-0 z-[1001] w-[min(100vw,420px)] bg-card border-l border-border/60 shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           isTop ? "" : "pointer-events-none",
           entry.surfaceClassName
         )}
@@ -218,7 +228,7 @@ function SheetSurface({
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.2 }}
         className={cn(
-          "fixed inset-0 z-[1001] bg-background flex flex-col",
+          "fixed inset-0 z-[1001] bg-background flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           isTop ? "" : "pointer-events-none",
           entry.surfaceClassName
         )}
@@ -243,7 +253,7 @@ function SheetSurface({
       dragElastic={0.12}
       onDragEnd={handleDragEnd}
       className={cn(
-        "fixed left-0 right-0 bottom-0 z-[1001] max-h-[88vh] bg-card border-t border-border/60 shadow-2xl flex flex-col",
+        "fixed left-0 right-0 bottom-0 z-[1001] max-h-[88vh] bg-card border-t border-border/60 shadow-2xl flex flex-col pb-[env(safe-area-inset-bottom)]",
         "rounded-t-[var(--radius-sheet)]",
         isTop ? "" : "pointer-events-none translate-y-2 opacity-90",
         entry.surfaceClassName

@@ -9,7 +9,14 @@
     "postinstall": "prisma generate",
     "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "db:push": "prisma db push",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "mobile:build": "cross-env MOBILE_BUILD=1 NEXT_PUBLIC_API_BASE_URL=https://voca-cyan.vercel.app SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build",
+    "mobile:sync": "npm run mobile:build && cap sync android",
+    "mobile:open": "cap open android",
+    "mobile:apk": "npm run mobile:sync && cd android && ./gradlew assembleRelease",
+    "mobile:apk:debug": "npm run mobile:sync && cd android && ./gradlew assembleDebug",
+    "mobile:assets": "capacitor-assets generate --android",
+    "mobile:release": "npm run mobile:build && cap sync android && npx @capgo/cli bundle upload"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
@@ -19,9 +26,18 @@
     "@aws-sdk/client-s3": "^3.1030.0",
     "@aws-sdk/s3-request-presigner": "^3.1030.0",
     "@base-ui/react": "^1.4.0",
+    "@capacitor-community/sqlite": "^8.1.0",
     "@capacitor/android": "^8.3.1",
+    "@capacitor/app": "^8.0.1",
     "@capacitor/core": "^8.3.1",
+    "@capacitor/filesystem": "^8.0.1",
+    "@capacitor/network": "^8.0.1",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.1",
+    "@capgo/capacitor-updater": "^8.45.0",
+    "capacitor-blob-writer": "^1.1.20",
     "@mozilla/readability": "^0.6.0",
     "@prisma/client": "^5.22.0",
     "@react-three/drei": "^10.7.7",
@@ -71,5 +87,8 @@
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "@capacitor/assets": "^3.0.5"
   }
 }

@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen, FileText, File, Cloud, CloudOff, Heart, MoreVertical,
-  Pencil, Star, ScanText, Trash2,
+  Pencil, Star, ScanText, Trash2, Download, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { downloadBook, deleteOfflineBook, isBookOffline } from "@/lib/offline";
+import { isNative } from "@/lib/native";
 
 export type BookCardBook = {
   id: string;
@@ -50,12 +52,40 @@ function shortDate(iso: string): string {
   }
 }
 
-export function BookCardV2({ book, offline = false, onOpen, onFavorite, onDelete, onRename, onOcr }: Props) {
+export function BookCardV2({ book, offline: offlineProp = false, onOpen, onFavorite, onDelete, onRename, onOcr }: Props) {
   const Icon = FILE_ICONS[book.fileType] ?? FileText;
   const percent = book.progress?.percentComplete ?? 0;
   const date = shortDate(book.lastOpenedAt ?? book.uploadedAt);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [offline, setOffline] = useState(offlineProp);
+  const [downloading, setDownloading] = useState(false);
   const longPressTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isNative()) return;
+    let alive = true;
+    isBookOffline(book.id).then((v) => { if (alive) setOffline(v); }).catch(() => {});
+    return () => { alive = false; };
+  }, [book.id]);
+
+  async function toggleOffline() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      if (offline) {
+        await deleteOfflineBook(book.id);
+        setOffline(false);
+      } else {
+        await downloadBook(book.id);
+        setOffline(true);
+      }
+    } catch (err) {
+      console.error("offline toggle failed", err);
+    } finally {
+      setDownloading(false);
+      setSheetOpen(false);
+    }
+  }
 
   function startLongPress() {
     if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
@@ -151,12 +181,15 @@ export function BookCardV2({ book, offline = false, onOpen, onFavorite, onDelete
       {sheetOpen && (
         <ActionsSheet
           book={book}
+          offline={offline}
+          downloading={downloading}
           onClose={() => setSheetOpen(false)}
           onFavorite={() => { onFavorite(); setSheetOpen(false); }}
           onDelete={() => { onDelete(); setSheetOpen(false); }}
           onRename={() => { onRename(); setSheetOpen(false); }}
           onOcr={() => { onOcr(); setSheetOpen(false); }}
           onOpen={() => { onOpen(); setSheetOpen(false); }}
+          onToggleOffline={toggleOffline}
         />
       )}
     </motion.div>
@@ -164,15 +197,18 @@ export function BookCardV2({ book, offline = false, onOpen, onFavorite, onDelete
 }
 
 function ActionsSheet({
-  book, onClose, onFavorite, onDelete, onRename, onOcr, onOpen,
+  book, offline, downloading, onClose, onFavorite, onDelete, onRename, onOcr, onOpen, onToggleOffline,
 }: {
   book: BookCardBook;
+  offline: boolean;
+  downloading: boolean;
   onClose: () => void;
   onFavorite: () => void;
   onDelete: () => void;
   onRename: () => void;
   onOcr: () => void;
   onOpen: () => void;
+  onToggleOffline: () => void;
 }) {
   return (
     <div
@@ -202,6 +238,19 @@ function ActionsSheet({
         />
         {book.fileType === "pdf" && (
           <Row icon={<ScanText size={16} />} label="Run OCR" onClick={onOcr} />
+        )}
+        {isNative() && (
+          <Row
+            icon={
+              downloading
+                ? <Loader2 size={16} className="animate-spin" />
+                : offline
+                  ? <Cloud size={16} className="text-primary" />
+                  : <Download size={16} />
+            }
+            label={downloading ? "Working…" : offline ? "Remove from device" : "Download for offline"}
+            onClick={onToggleOffline}
+          />
         )}
         <div className="my-1 border-t border-border/40" />
         <Row icon={<Trash2 size={16} />} label="Delete" onClick={onDelete} destructive />
