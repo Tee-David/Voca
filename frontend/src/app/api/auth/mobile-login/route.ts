@@ -3,6 +3,7 @@ import { encode } from "next-auth/jwt";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { MOBILE_JWT_SALT } from "@/lib/session";
+import { clientIp, enforce } from "@/lib/rateLimit";
 
 const MAX_AGE = 60 * 60 * 24 * 30;
 
@@ -23,6 +24,19 @@ export async function POST(req: Request) {
   if (!email || !password) {
     return NextResponse.json({ error: "Email and password required" }, { status: 400 });
   }
+
+  // Case-folded for the rate-limit key ONLY. The DB lookup below deliberately
+  // uses the raw address, matching lib/auth.ts — stored emails are not
+  // normalized, so folding here would lock out any user whose address has
+  // uppercase. Normalizing emails is a separate change that needs auth.ts and
+  // a data migration together, not a side effect of a security fix.
+  const rateKeyEmail = email.trim().toLowerCase();
+
+  const limited = enforce([
+    { key: `login:ip:${clientIp(req)}`, limit: 10, windowSec: 60 },
+    { key: `login:email:${rateKeyEmail}`, limit: 5, windowSec: 60 },
+  ]);
+  if (limited) return limited;
 
   const user = await db.user.findUnique({ where: { email } });
   if (!user) {

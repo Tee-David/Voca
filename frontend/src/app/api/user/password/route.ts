@@ -2,13 +2,24 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { clientIp, enforce } from "@/lib/rateLimit";
 
 export async function PATCH(req: Request) {
   const sessionUser = await getSessionUser(req);
   if (!sessionUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { currentPassword, newPassword } = await req.json();
+  const limited = enforce([
+    { key: `pwchange:user:${sessionUser.id}`, limit: 5, windowSec: 300 },
+    { key: `pwchange:ip:${clientIp(req)}`, limit: 20, windowSec: 300 },
+  ]);
+  if (limited) return limited;
 
+  const body = await req.json().catch(() => ({}));
+  const { currentPassword, newPassword } = body as Record<string, unknown>;
+
+  if (typeof currentPassword !== "string" || typeof newPassword !== "string") {
+    return NextResponse.json({ error: "Both current and new password are required" }, { status: 400 });
+  }
   if (!currentPassword || !newPassword) {
     return NextResponse.json({ error: "Both current and new password are required" }, { status: 400 });
   }

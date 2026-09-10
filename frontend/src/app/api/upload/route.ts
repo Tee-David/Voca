@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { getUploadUrl } from "@/lib/r2";
+import { isOwnedKey, mintUploadKey } from "@/lib/storageKey";
+import { clientIp, enforce } from "@/lib/rateLimit";
 
 const ALLOWED_TYPES: Record<string, string> = {
   "application/pdf": "pdf",
@@ -16,11 +18,31 @@ export async function POST(req: NextRequest) {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  const limited = enforce([
+    { key: `upload:user:${user.id}`, limit: 60, windowSec: 3600 },
+    { key: `upload:ip:${clientIp(req)}`, limit: 120, windowSec: 3600 },
+  ]);
+  if (limited) return limited;
+
+  const body = await req.json().catch(() => ({}));
 
   // Step 2: Confirm upload — create the book record
   if (body.confirm && body.r2Key) {
     const { r2Key, title: rawTitle, fileName, fileType, fileSize } = body;
+
+    // The client used to be trusted with this key, so a Book row could be
+    // created pointing at another user's object — which then satisfied the
+    // {r2Key, userId} ownership check in the file proxy and granted read
+    // access to it. Only keys inside the caller's own prefix are accepted.
+    if (!isOwnedKey(r2Key, user.id)) {
+      return NextResponse.json({ error: "Invalid r2Key" }, { status: 400 });
+    }
+
+    // fileType is persisted and branched on by the reader; keep it closed.
+    const allowedFileTypes = new Set(Object.values(ALLOWED_TYPES));
+    if (fileType !== undefined && !allowedFileTypes.has(fileType)) {
+      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
+    }
     const cleanName = (fileName ?? "Untitled")
       .replace(/\.[^/.]+$/, "") // remove extension
       .replace(/[_-]+/g, " ") // underscores/dashes to spaces
@@ -56,7 +78,8 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
-  const r2Key = `pdfs/${user.id}/${Date.now()}-${fileName}`;
+  // Keys are minted server-side, never accepted from the client.
+  const r2Key = mintUploadKey(user.id, String(fileName));
   const uploadUrl = await getUploadUrl(r2Key, contentType);
 
   return NextResponse.json({ uploadUrl, r2Key, fileType });

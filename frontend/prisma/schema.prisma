@@ -112,6 +112,11 @@ model Book {
   @@index([userId, lastOpenedAt])
   @@index([userId, isFavorite])
   @@index([userId, fileType])
+  // r2Key is the lookup on the hottest authenticated path: /api/files/[...key]
+  // resolves ownership with findFirst({ where: { r2Key, userId } }) on EVERY
+  // pdfjs Range request (dozens per book open), plus /api/files/sign. Without
+  // this it was a per-user scan at best.
+  @@index([r2Key])
 }
 
 // ─── Reading progress per book ───────────────────────────────────────────────

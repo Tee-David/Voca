@@ -16,7 +16,8 @@
     "mobile:apk": "npm run mobile:sync && cd android && ./gradlew assembleRelease",
     "mobile:apk:debug": "npm run mobile:sync && cd android && ./gradlew assembleDebug",
     "mobile:assets": "capacitor-assets generate --android",
-    "mobile:release": "npm run mobile:build && cap sync android && npx @capgo/cli bundle upload"
+    "mobile:release": "npm run mobile:build && cap sync android && npx @capgo/cli bundle upload",
+    "test:security": "node test/security/ssrf.check.mjs && node test/security/authz.check.mjs"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

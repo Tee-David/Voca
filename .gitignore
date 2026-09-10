@@ -67,3 +67,9 @@ inspo/
 
 # ─── Local-only scratch / planning ───────────────────────────
 plans/
+
+# One-off ops/debug scripts must never be committed — they have historically
+# carried hardcoded R2 credentials. Use scripts/r2-cors.mjs (env-driven) instead.
+frontend/*.mjs
+!frontend/next.config.mjs
+!frontend/postcss.config.mjs

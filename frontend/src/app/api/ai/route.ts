@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/session";
+import { clientIp, enforce } from "@/lib/rateLimit";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -41,6 +42,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // This route proxies a PAID Groq key with no per-user quota, so an
+  // unthrottled caller bills you directly. Limits are per-user first
+  // (the meaningful axis for an authenticated route) plus a per-IP backstop.
+  const limited = enforce([
+    { key: `ai:user:${user.id}`, limit: 20, windowSec: 60 },
+    { key: `ai:user:hourly:${user.id}`, limit: 200, windowSec: 3600 },
+    { key: `ai:ip:${clientIp(req)}`, limit: 60, windowSec: 60 },
+  ]);
+  if (limited) return limited;
+
   if (!GROQ_API_KEY) {
     return NextResponse.json(
       { error: "Groq API key not configured. Set GROQ_API_KEY in .env" },
@@ -57,6 +68,19 @@ export async function POST(req: NextRequest) {
       if (!file) {
         return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
       }
+
+      // Was unbounded in both size and type.
+      const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
+      if (file.size > MAX_AUDIO_BYTES) {
+        return NextResponse.json(
+          { error: "Audio too large (max 20MB)" },
+          { status: 413 },
+        );
+      }
+      if (file.type && !/^audio\/|^video\/webm/.test(file.type)) {
+        return NextResponse.json({ error: "Not an audio file" }, { status: 415 });
+      }
+
       const whisperForm = new FormData();
       whisperForm.append("file", file, file.name);
       whisperForm.append("model", "whisper-large-v3-turbo");
@@ -82,7 +106,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Handle standard AI tasks (JSON body)
-  const body: AiRequestBody = await req.json();
+  const body = (await req.json().catch(() => null)) as AiRequestBody | null;
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { task, context, question, chapterTitle } = body;
 
   if (!task || !context) {

@@ -1,73 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
+import { getSessionUser } from "@/lib/session";
+import { safeFetchHtml, SsrfError } from "@/lib/ssrf";
+import { clientIp, enforce } from "@/lib/rateLimit";
 
 /**
  * POST /api/fetch-article
- * Server-side fetch + Readability extract for "Paste a link" import flow.
+ * Server-side fetch + Readability extract for the "Paste a link" import flow.
  *
  * Body: { url: string }
  * Returns: { title, byline, excerpt, content (plain text), length }
+ *
+ * This route previously had NO authentication check and validated only the URL
+ * protocol, making it an open SSRF proxy. It now requires a session and routes
+ * every outbound request through the guard in @/lib/ssrf.
  */
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limited = enforce([
+    { key: `article:user:${user.id}`, limit: 30, windowSec: 3600 },
+    { key: `article:ip:${clientIp(req)}`, limit: 60, windowSec: 3600 },
+  ]);
+  if (limited) return limited;
+
+  const body = await req.json().catch(() => ({}));
+  const url = (body as { url?: unknown }).url;
+
+  if (!url || typeof url !== "string") {
+    return NextResponse.json({ error: "Missing url" }, { status: 400 });
+  }
+
   try {
-    const { url } = await req.json();
+    const { url: finalUrl, html } = await safeFetchHtml(url);
 
-    if (!url || typeof url !== "string") {
-      return NextResponse.json({ error: "Missing url" }, { status: 400 });
-    }
-
-    // Validate URL
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(url);
-      if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-        throw new Error("Invalid protocol");
-      }
-    } catch {
-      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
-    }
-
-    // Fetch the page
-    const res = await fetch(parsedUrl.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; Voca/1.0; +https://voca.app) AppleWebKit/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `Failed to fetch page (${res.status})` },
-        { status: 502 }
-      );
-    }
-
-    const html = await res.text();
-
-    // Parse with Readability
-    const dom = new JSDOM(html, { url: parsedUrl.toString() });
+    const dom = new JSDOM(html, { url: finalUrl.toString() });
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
     if (!article || !article.textContent?.trim()) {
       return NextResponse.json(
         { error: "Could not extract readable content from this page" },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
+    const content = article.textContent.trim();
+
     return NextResponse.json({
-      title: article.title || parsedUrl.hostname,
+      title: article.title || finalUrl.hostname,
       byline: article.byline || null,
       excerpt: article.excerpt || null,
-      content: article.textContent.trim(),
-      length: article.length || article.textContent.trim().length,
+      content,
+      length: article.length || content.length,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (err instanceof SsrfError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    // Never echo internal error text back to the caller.
+    console.error("fetch-article failed", err);
+    return NextResponse.json({ error: "Failed to fetch article" }, { status: 502 });
   }
 }
