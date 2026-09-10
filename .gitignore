@@ -73,3 +73,6 @@ plans/
 frontend/*.mjs
 !frontend/next.config.mjs
 !frontend/postcss.config.mjs
+
+# Downloaded CA certificates — never commit
+certs/
