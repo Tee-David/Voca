@@ -36,6 +36,7 @@
 - [Public presentation checklist](PRESENTATION_CHECKLIST.md)
 - [README release review](RELEASE_README_REVIEW.md)
 - [Open-source audit](OPEN_SOURCE_AUDIT.md)
+- [Audit log](AUDIT_LOG.md)
 - [Open-source scorecard](OPEN_SOURCE_SCORECARD.md)
 - [Third-party licensing audit](THIRD_PARTY_AUDIT.md)
 - [Release candidate template](RELEASE_CANDIDATE_TEMPLATE.md)
