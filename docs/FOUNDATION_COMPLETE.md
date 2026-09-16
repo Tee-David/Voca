@@ -23,7 +23,7 @@ The foundation pass does not claim that credentials were rotated, third-party li
 
 ## Next state
 
-The next meaningful artifact is the **clean public release candidate**. It should not be created by publishing the current private Git history. See `PUBLIC_RELEASE_PLAN.md`, `CLEAN_SNAPSHOT_CHECKLIST.md` and `RELEASE_CANDIDATE_TEMPLATE.md`.
+The next meaningful artifact is the **clean public release candidate**. It should not be created by publishing the current private Git history. See `CANDIDATE_ENTRY_CRITERIA.md`, `PUBLIC_RELEASE_PLAN.md`, `CLEAN_SNAPSHOT_CHECKLIST.md` and `RELEASE_CANDIDATE_TEMPLATE.md`.
 
 ## External prerequisite
 
