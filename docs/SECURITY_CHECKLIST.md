@@ -1,11 +1,11 @@
 # Security Review Checklist
 
-Use this checklist for the exact clean release candidate.
+Use this checklist for the exact clean release candidate. Do not mark an item complete from documentation alone.
 
 ## Repository and credentials
 
-- [ ] Full candidate history scanned with a dedicated secret scanner
-- [ ] No `.env`, keystore, signing, certificate-private-key or production credential files tracked
+- [ ] Full clean-candidate history scanned with a dedicated secret scanner
+- [ ] No `.env`, keystore, signing, private-key or production credential files tracked
 - [ ] Historically exposed R2 credential confirmed rotated/revoked
 - [ ] No production-only deployment URLs or identifiers unintentionally embedded
 - [ ] Generated logs and debug dumps reviewed
@@ -45,7 +45,8 @@ Use this checklist for the exact clean release candidate.
 ## Client and mobile
 
 - [ ] No secrets exposed through `NEXT_PUBLIC_*`
-- [ ] No maintainer API URL hardcoded into public mobile build
+- [x] Maintainer API URL removed from the mobile build script
+- [ ] Exact clean candidate contains no maintainer API URL in generated/public mobile configuration
 - [ ] No release signing keys or keystore properties tracked
 - [ ] Deep links and external URLs reviewed
 - [ ] Offline caches do not unintentionally expose sensitive document data across users
