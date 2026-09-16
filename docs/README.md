@@ -33,6 +33,7 @@
 - [Release readiness gate](../RELEASE_READINESS.md)
 - [Release blockers](RELEASE_BLOCKERS.md)
 - [Maintainer actions before RC](MAINTAINER_ACTIONS.md)
+- [Candidate entry criteria](CANDIDATE_ENTRY_CRITERIA.md)
 - [Release process](RELEASE_PROCESS.md)
 - [Public release plan](PUBLIC_RELEASE_PLAN.md)
 - [Clean snapshot checklist](CLEAN_SNAPSHOT_CHECKLIST.md)
