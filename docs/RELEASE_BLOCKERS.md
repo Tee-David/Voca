@@ -49,3 +49,7 @@ After the blockers above are closed, identify the exact release candidate. Publi
 ## What is no longer a blocker
 
 The initial project identity, architecture documentation, contribution policy, security policy, community templates, governance, testing strategy, CI definition, dependency automation, release process and public-release narrative are now established on the private release-preparation branch.
+
+## Current stopping condition
+
+Repository-only preparation should continue until it reaches work that requires external evidence or infrastructure action. The project must not manufacture checkmarks for credential rotation, third-party licensing, clean-environment execution, public-history secret scanning or visual/device verification without actually performing those tasks.
