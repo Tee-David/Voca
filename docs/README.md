@@ -11,6 +11,7 @@
 - [Privacy boundaries](PRIVACY_BOUNDARIES.md)
 - [Accessibility](ACCESSIBILITY.md)
 - [Performance](PERFORMANCE.md)
+- [Compatibility](COMPATIBILITY.md)
 - [Engineering quality bar](QUALITY_BAR.md)
 - [Dependency policy](DEPENDENCY_POLICY.md)
 
