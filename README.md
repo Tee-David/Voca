@@ -34,7 +34,7 @@ Optional AI, remote storage, sync, transcription, OCR and remote TTS can extend 
 
 ## Local first, not cloud dependent
 
-The core Voca experience should remain useful without requiring accounts with several cloud vendors. Current hosted integrations are being separated from the core reader behind explicit provider boundaries as part of the first open-source release.
+The core Voca experience should remain useful without requiring accounts with several cloud vendors. Hosted integrations are kept at explicit privacy boundaries rather than silently defining the reader.
 
 Where an optional provider receives document content or derived data, Voca documents that boundary so users can make an informed choice. See [`docs/PRIVACY_BOUNDARIES.md`](docs/PRIVACY_BOUNDARIES.md).
 
@@ -48,7 +48,7 @@ Document → extraction ──┤
 Optional adapters: storage · AI · sync · transcription · remote TTS · OCR
 ```
 
-The codebase is being improved in place rather than reorganized for appearance alone. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design, current repository structure, security boundaries and provider direction.
+The codebase is improved in place rather than reorganized for appearance alone. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design, repository structure, security boundaries and provider direction.
 
 ## Development
 
@@ -67,7 +67,7 @@ npm run test:security
 npm run build
 ```
 
-The public developer experience is still being verified. A contributor should ultimately be able to evaluate and run the core reader without access to the maintainer's production infrastructure. See [`docs/CONTRIBUTOR_QUICKSTART.md`](docs/CONTRIBUTOR_QUICKSTART.md) and [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+See [`docs/CONTRIBUTOR_QUICKSTART.md`](docs/CONTRIBUTOR_QUICKSTART.md) and [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for configuration and contributor setup.
 
 ## Repository
 
@@ -96,11 +96,11 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md). The project values privacy, accessibl
 
 The [`ROADMAP.md`](ROADMAP.md) describes the capability direction, while [`docs/PROJECT_GOVERNANCE.md`](docs/PROJECT_GOVERNANCE.md) explains the current maintainer-led decision model.
 
-## Open-source release status
+## Release safety
 
-Voca is undergoing a controlled first open-source release. The existing private repository will **not** simply be switched to public because its development history contains infrastructure residue that must not be published.
+The existing private development history will **not** be published because it previously contained infrastructure credentials. Public release must be made from an audited clean-history source snapshot after those historical credentials are revoked or rotated.
 
-The release process includes credential rotation, clean-history creation, licensing verification, clean-install testing, CI, secret scanning and an independent candidate audit. [`RELEASE_READINESS.md`](RELEASE_READINESS.md) is the publication gate and [`docs/RELEASE_BLOCKERS.md`](docs/RELEASE_BLOCKERS.md) lists the remaining hard blockers.
+[`RELEASE_READINESS.md`](RELEASE_READINESS.md) is the publication gate and [`docs/RELEASE_BLOCKERS.md`](docs/RELEASE_BLOCKERS.md) tracks anything that still prevents a safe release.
 
 ## Maintainer
 
@@ -108,6 +108,6 @@ Created and maintained by **Taiwo David Dayomola, Senior Software Engineer**.
 
 ## License
 
-The application source license will be finalized after the exact model-weight and redistributed-asset licensing audit. Model terms may differ from the application source license. See [`docs/THIRD_PARTY_AUDIT.md`](docs/THIRD_PARTY_AUDIT.md).
+Voca's application source is licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
 
-Until that audit and the release gate are complete, this repository remains private and is not yet offered as a public open-source release.
+The Kokoro speech model is obtained separately at runtime and has its own upstream distribution and notices. See [`docs/THIRD_PARTY_AUDIT.md`](docs/THIRD_PARTY_AUDIT.md) for the third-party boundary and release audit.
