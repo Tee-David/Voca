@@ -1,7 +1,7 @@
 {
   "name": "Voca",
   "short_name": "Voca",
-  "description": "AI-powered document reader with natural text-to-speech",
+  "description": "Open-source, local-first document reader with synchronized text-to-speech",
   "start_url": "/library",
   "display": "standalone",
   "background_color": "#ffffff",
