@@ -31,6 +31,7 @@
 - [Security review checklist](SECURITY_CHECKLIST.md)
 - [Release readiness gate](../RELEASE_READINESS.md)
 - [Release blockers](RELEASE_BLOCKERS.md)
+- [Maintainer actions before RC](MAINTAINER_ACTIONS.md)
 - [Release process](RELEASE_PROCESS.md)
 - [Public release plan](PUBLIC_RELEASE_PLAN.md)
 - [Public presentation checklist](PRESENTATION_CHECKLIST.md)
