@@ -6,8 +6,8 @@ This scorecard tracks readiness, not product popularity. A section marked comple
 | --- | --- | --- |
 | Problem | Complete | README and brand notes explain the subscription, repurchase, cloud-TTS and privacy problem Voca addresses |
 | Project identity | Complete | Name, tagline, core statement, maintainer identity and product principles documented |
-| Architecture | Strong, verification pending | Core/local pipeline, ADRs, data flow and provider boundaries documented; remaining hosted coupling requires candidate code review |
-| Developer experience | Strong, verification pending | Quickstart, configuration and dependency guidance exist; clean setup still needs independent execution |
+| Architecture | Strong, verification pending | Core/local pipeline, ADRs, data flow and provider contract documented; remaining hosted coupling requires candidate code review |
+| Developer experience | Strong, verification pending | Quickstart, configuration, compatibility and dependency guidance exist; clean setup still needs independent execution |
 | Security | Strong foundation, blocked | Policy, regression tests, checklist and candidate scan exist; credential rotation and clean history remain blocking |
 | Testing | In progress | Existing security assertions plus CI type/build/backend checks; broader representative flow verification remains |
 | Documentation | Complete foundation | Public-facing and contributor/release documentation set established and indexed |
