@@ -1,0 +1,33 @@
+# Voca Documentation
+
+## Start here
+
+- [Architecture](../ARCHITECTURE.md)
+- [Contributor quickstart](CONTRIBUTOR_QUICKSTART.md)
+- [Configuration](CONFIGURATION.md)
+- [Testing strategy](TESTING.md)
+- [Privacy boundaries](PRIVACY_BOUNDARIES.md)
+
+## Project and community
+
+- [Brand and project identity](BRANDING.md)
+- [Roadmap](../ROADMAP.md)
+- [Project governance](PROJECT_GOVERNANCE.md)
+- [Maintainers](MAINTAINERS.md)
+- [Support](SUPPORT.md)
+- [Architecture decisions](ARCHITECTURE_DECISIONS.md)
+
+## Security and release engineering
+
+- [Security policy](../SECURITY.md)
+- [Security review checklist](SECURITY_CHECKLIST.md)
+- [Release readiness gate](../RELEASE_READINESS.md)
+- [Release blockers](RELEASE_BLOCKERS.md)
+- [Release process](RELEASE_PROCESS.md)
+- [Open-source audit](OPEN_SOURCE_AUDIT.md)
+- [Open-source scorecard](OPEN_SOURCE_SCORECARD.md)
+- [Third-party licensing audit](THIRD_PARTY_AUDIT.md)
+- [Release candidate template](RELEASE_CANDIDATE_TEMPLATE.md)
+- [Draft release notes](RELEASE_NOTES_DRAFT.md)
+
+The documentation intentionally distinguishes completed evidence from planned work. A release checklist item should not be marked complete merely because a document says it ought to happen.
