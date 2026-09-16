@@ -6,17 +6,17 @@ This scorecard tracks readiness, not product popularity. A section marked comple
 | --- | --- | --- |
 | Problem | Complete | README and brand notes explain the subscription, repurchase, cloud-TTS and privacy problem Voca addresses |
 | Project identity | Complete | Name, tagline, core statement, maintainer identity and product principles documented |
-| Architecture | In progress | Core/local pipeline and provider boundaries documented; remaining hosted coupling still requires candidate review |
-| Developer experience | In progress | Contributor quickstart and configuration docs exist; clean setup still needs independent execution |
-| Security | In progress | Security policy, regression tests and candidate scanning added; credential rotation and clean history remain blocking |
-| Testing | In progress | Existing security assertions plus CI type/build checks; broader representative flow verification remains |
-| Documentation | Strong | README, architecture, roadmap, security, contributing, privacy, config, release and audit docs established |
-| Community readiness | Strong | Conduct, governance, maintainer guidance, issue forms and PR template established |
-| Automation | In progress | CI, dependency audit, Dependabot and candidate source checks defined; exact head must pass |
-| Presentation | In progress | Identity and release narrative established; public screenshots/demo assets should be selected from copyright-safe material |
-| Independent audit | First pass complete | `docs/OPEN_SOURCE_AUDIT.md`; final candidate audit still required |
+| Architecture | Strong, verification pending | Core/local pipeline, ADRs, data flow and provider boundaries documented; remaining hosted coupling requires candidate code review |
+| Developer experience | Strong, verification pending | Quickstart, configuration and dependency guidance exist; clean setup still needs independent execution |
+| Security | Strong foundation, blocked | Policy, regression tests, checklist and candidate scan exist; credential rotation and clean history remain blocking |
+| Testing | In progress | Existing security assertions plus CI type/build/backend checks; broader representative flow verification remains |
+| Documentation | Complete foundation | Public-facing and contributor/release documentation set established and indexed |
+| Community readiness | Complete foundation | Conduct, governance, maintainers, support, issue forms, PR template and CODEOWNERS established |
+| Automation | Strong, verification pending | CI, dependency audit, Dependabot and tracked-source checks defined; exact candidate must pass |
+| Polished presentation | In progress | Repository narrative and presentation checklist exist; safe visuals and public metadata remain candidate-stage work |
+| Independent audit | First pass complete | `docs/OPEN_SOURCE_AUDIT.md`; final clean-candidate audit still required |
 | Release candidate | Blocked | Requires clean history, licensing, credential rotation and verification |
-| Maintainer approval | Waiting | Only requested after audited RC exists |
+| Maintainer approval | Waiting | Requested only after audited RC exists |
 | Public release | Waiting | Must follow explicit maintainer approval |
 
 The scorecard deliberately does not convert unresolved blockers into percentages. Release-critical evidence is binary.
