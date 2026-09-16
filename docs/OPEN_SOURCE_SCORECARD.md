@@ -14,13 +14,13 @@ This scorecard tracks readiness, not product popularity. A section marked comple
 | Community readiness | Complete foundation | Conduct, governance, maintainers, support, issue forms, PR template and CODEOWNERS established |
 | Automation | Strong, verification pending | CI, dependency audit, Dependabot and tracked-source checks defined; exact candidate must pass |
 | Polished presentation | Strong narrative, visuals pending | Landing page/release narrative and presentation checklist exist; safe visuals and public metadata remain candidate-stage work |
-| Independent audit | First pass complete | Audit and audit log exist; final clean-candidate audit still required |
+| Independent audit | Foundation audit complete | Audit and audit log exist; final clean-candidate audit still required |
 | Release candidate | Blocked | Requires clean history, licensing, credential rotation and verification |
 | Maintainer approval | Waiting | Requested only after audited RC exists |
 | Public release | Waiting | Must follow explicit maintainer approval |
 
 ## Current boundary
 
-The repository foundation is largely established. Remaining work is now dominated by release evidence: external credential rotation, exact third-party licensing provenance, creation and execution of a clean candidate, device/browser verification and the final candidate audit. These must be performed rather than inferred.
+The repository foundation pass is complete. Remaining work is release evidence: external credential rotation, exact third-party licensing provenance, creation and execution of a clean candidate, device/browser verification and the final candidate audit. These must be performed rather than inferred.
 
 The scorecard deliberately does not convert unresolved blockers into percentages. Release-critical evidence is binary.
