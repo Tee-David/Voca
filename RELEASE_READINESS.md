@@ -1,6 +1,6 @@
 # Voca Open Source Release Readiness
 
-Voca is being prepared as a local-first open-source reading platform. This file is the publication gate. A checked box should represent verified evidence, not intent.
+Voca is being prepared as a local-first open-source reading platform. This file is the publication gate. A checked box represents verified evidence, not intent.
 
 ## Product and identity
 
@@ -16,8 +16,10 @@ Voca is being prepared as a local-first open-source reading platform. This file 
 - [x] Local versus optional remote processing is documented
 - [x] Hardcoded maintainer API URL removed from mobile build script
 - [x] Existing SSRF and object-authorization regression checks identified
+- [x] Private release-preparation head passes secret scanning
+- [x] Unverified public raster assets removed
 - [ ] Historical R2 credentials revoked or rotated by the infrastructure owner
-- [ ] Exact public candidate scanned for secrets
+- [ ] Exact clean public candidate scanned for secrets
 - [ ] Public candidate contains no private deployment identifiers, test accounts or personal data
 - [ ] Android candidate contains no signing material or production-only configuration
 - [ ] Clean public Git history contains no historical credentials
@@ -28,6 +30,7 @@ Voca is being prepared as a local-first open-source reading platform. This file 
 - [x] Target provider boundaries documented
 - [x] Optional cloud capabilities distinguished from the reader core
 - [x] Repository structure documented without forcing a cosmetic monorepo rewrite
+- [x] Environment example rewritten with sanitized provider-neutral placeholders
 - [ ] Core local reading path independently verified without maintainer cloud credentials
 - [ ] Environment template independently verified from a clean setup
 - [ ] Remaining provider-specific coupling reviewed and either separated or explicitly documented
@@ -37,20 +40,23 @@ Voca is being prepared as a local-first open-source reading platform. This file 
 - [x] Security regression test command exists
 - [x] CI definition includes deterministic install, type check, security tests and production build
 - [x] CI definition includes production dependency audit
-- [ ] CI passes on the exact release candidate
+- [x] Latest private release-preparation CI passes
+- [ ] CI passes on the exact clean release candidate
 - [ ] Clean production build verified independently
 - [ ] Representative document ingestion/playback flows verified
 - [ ] Oversized/malformed upload and parser abuse cases reviewed for the candidate
 
 ## Licensing and content
 
-- [x] Application license intentionally withheld until audit is complete
-- [ ] Exact Kokoro model and weight license verified
-- [ ] kokoro-js license verified for intended distribution
-- [ ] Fonts, icons and bundled assets audited
-- [ ] Test/sample documents confirmed original, licensed, synthetic or public domain
-- [ ] Third-party notices added where required
-- [ ] Final application source license selected and added
+- [x] Exact Kokoro base model/weight licensing evidence verified as Apache-2.0
+- [x] `kokoro-js` licensing evidence reviewed for intended distribution
+- [x] Unexplained raster assets removed
+- [x] Default unused framework public assets removed from release-preparation branch
+- [x] Final application source license selected and added: Apache-2.0
+- [ ] Remaining generated/bundled asset notice requirements reviewed on clean candidate
+- [ ] Test/sample documents confirmed original, licensed, synthetic or public domain on clean candidate
+- [ ] Automated dependency-license inventory captured for exact candidate
+- [ ] Third-party notices added if final inventory requires them
 
 ## Documentation and community
 
@@ -80,12 +86,12 @@ Voca is being prepared as a local-first open-source reading platform. This file 
 
 ## Maintainer publication approval
 
-- [ ] Taiwo David Dayomola explicitly approves the audited release candidate for public release
+- [ ] Taiwo David Dayomola explicitly approves the exact audited release candidate for public release
 
 Publication must not happen before the final checkbox is explicitly approved.
 
-## Known hard blockers
+## Remaining hard blockers
 
-1. Private Git history records that live R2 credentials were previously committed. Removal from the working tree is not sufficient. The credentials must be rotated and the public release must use clean history.
-2. Licensing for the exact speech model/weights and redistributed assets must be verified before an application license is selected.
-3. The clean-install/local-core experience and CI must pass on the exact candidate, not merely on an earlier private-development commit.
+1. Private Git history records that live R2 credentials were previously committed. Removal from the working tree is not sufficient. The affected credential must be revoked or rotated by the infrastructure owner.
+2. The public release must use clean Git history rather than exposing the existing private development history.
+3. The clean-install/local-core experience, final asset/dependency inventory, CI, secret scan and independent audit must pass on the exact clean candidate.
