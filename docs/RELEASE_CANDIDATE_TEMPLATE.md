@@ -33,6 +33,15 @@ Use a fresh copy of this file for the first clean public candidate.
 - [ ] No signing material or maintainer endpoint embedded
 - [ ] Copyright-safe fixtures/assets confirmed
 
+## Compatibility evidence
+
+Record the actual browsers/devices tested rather than inferring support from framework documentation.
+
+- Browser/version:
+- Browser/version:
+- Android version/device:
+- Installed PWA tested: [ ]
+
 ## Licensing
 
 - [ ] Application source license selected
