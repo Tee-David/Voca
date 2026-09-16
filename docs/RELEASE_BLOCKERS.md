@@ -2,33 +2,46 @@
 
 This is the short operational list for the first public Voca release. Detailed evidence lives in `RELEASE_READINESS.md` and `docs/OPEN_SOURCE_AUDIT.md`.
 
-## Requires maintainer/infrastructure action
+## Blocker 1: rotate historically exposed R2 credentials
 
-### Rotate historically exposed R2 credentials
+A private historical commit confirms that live Cloudflare R2 credentials were once tracked. The source files were removed, but deletion does not revoke a credential. The infrastructure owner must rotate/revoke the affected token and confirm the application uses replacement credentials before publication.
 
-A private historical commit confirms that live Cloudflare R2 credentials were once tracked. The source files were removed, but deletion does not revoke a credential. The infrastructure owner must rotate/revoke the affected token and confirm that the application is using replacement credentials before publication.
+**Owner:** maintainer/infrastructure owner  
+**Can repository work alone close this?** No.
 
-This cannot be solved by documentation, a later commit or making the repository private again.
-
-## Requires clean candidate creation
+## Blocker 2: create a clean public history
 
 The public repository must start from an audited source snapshot with new Git history. Do not change the visibility of the current private development repository and call that the open-source release.
 
-The clean candidate must then receive a full secret scan and residue review.
+The clean candidate must receive a dedicated full-history secret scan and residue review.
 
-## Requires licensing evidence
+**Owner:** release engineering  
+**Can current private branch be published instead?** No.
+
+## Blocker 3: licensing evidence
 
 Verify the exact Kokoro model/weights and all redistributed fonts, icons, Android artwork, fixtures and other assets. Select Voca's source license only after compatibility is established.
 
-## Requires candidate verification
+**Owner:** release engineering/maintainer  
+**Evidence location:** `docs/THIRD_PARTY_AUDIT.md`
+
+## Blocker 4: candidate verification
 
 - Follow setup from a clean environment
 - Verify a useful local/core reading path without maintainer cloud credentials
 - Pass CI on the exact candidate
-- Run final secret scanning
+- Run final full-history secret scanning
 - Review malformed/oversized document handling and security-sensitive flows
 - Confirm no Android signing material or maintainer endpoint is embedded
 
+**Owner:** release engineering/independent reviewer
+
+## Blocker 5: final candidate audit and presentation
+
+Complete the release-candidate template, security checklist and public-presentation checklist against the clean repository. Resolve all release-blocking audit findings.
+
+**Owner:** independent reviewer/release engineering
+
 ## Final gate
 
-After the blockers above are closed, identify the release candidate and perform the final independent audit. Publication then waits for one explicit decision from Taiwo David Dayomola: approve the audited candidate for public release.
+After the blockers above are closed, identify the exact release candidate. Publication then waits for one explicit decision from Taiwo David Dayomola: approve that audited candidate for public release.
