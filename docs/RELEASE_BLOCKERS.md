@@ -38,10 +38,14 @@ Verify the exact Kokoro model/weights and all redistributed fonts, icons, Androi
 
 ## Blocker 5: final candidate audit and presentation
 
-Complete the release-candidate template, security checklist and public-presentation checklist against the clean repository. Resolve all release-blocking audit findings.
+Complete the release-candidate template, security checklist, rendered README review and public-presentation checklist against the clean repository. Resolve all release-blocking audit findings.
 
 **Owner:** independent reviewer/release engineering
 
 ## Final gate
 
 After the blockers above are closed, identify the exact release candidate. Publication then waits for one explicit decision from Taiwo David Dayomola: approve that audited candidate for public release.
+
+## What is no longer a blocker
+
+The initial project identity, architecture documentation, contribution policy, security policy, community templates, governance, testing strategy, CI definition, dependency automation, release process and public-release narrative are now established on the private release-preparation branch.
