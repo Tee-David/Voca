@@ -1,59 +1,88 @@
 # Open Source Audit
 
-This document records the independent release-preparation review of Voca's current private repository. It is intentionally conservative: an unchecked item is not assumed safe.
+This is the first independent release-preparation review of Voca's private codebase. It is deliberately conservative: planned work is not counted as completed evidence.
 
 ## Executive finding
 
-The project has a credible product identity and an increasingly clear local-first architecture, but the private repository itself must not be published with its existing Git history. Historical commits explicitly confirm that live object-storage credentials were committed. A clean public history plus credential rotation is therefore a hard release requirement.
+Voca now has a coherent open-source identity, a documented local-first architecture, security and privacy policies, contributor/community infrastructure, CI definitions and a controlled release process. The project is materially beyond the state of a private application being casually exposed on GitHub.
 
-## Security
+It is **not yet safe to publish**. The private repository itself must not be switched to public because historical commits explicitly confirm that live object-storage credentials were committed. The first public release must be a clean-history candidate after credential rotation and licensing verification.
 
-### Confirmed improvements
+## Product identity
 
-The existing application has dedicated regression checks for SSRF and object/storage authorization behavior. A prior security pass also hardened authenticated fetching, object-key ownership, progress ownership, CORS, rate limiting, upload limits and malformed request handling.
+**Finding: strong.**
 
-### Blocking
+The project leads with a real user problem: listening to owned documents should not inherently require audiobook repurchase, another subscription or automatic upload to proprietary cloud TTS. The tagline and local-first principles align with the architecture rather than functioning as branding alone.
 
-- Credentials exposed in historical commits must be revoked/rotated.
-- The public repository must be created from an audited clean snapshot rather than by exposing the private history.
-- Final secret scanning must be run against the exact public candidate.
+## Architecture
 
-### Follow-up
+**Finding: direction is clear; implementation separation remains in progress.**
 
-- Verify production-grade rate limiting for hosted deployments rather than relying only on per-instance memory.
-- Continue parser/upload fuzz and abuse testing.
-- Verify Android signing configuration immediately before candidate creation.
+The core reading pipeline and target provider capabilities are documented. Hosted storage, AI, sync, transcription, remote TTS and OCR are explicitly treated as adapters. The decision not to force a monorepo rewrite is appropriate for a working application.
 
-## Architecture and privacy
-
-The documented target correctly separates the reading pipeline from optional storage, AI, sync, transcription, remote TTS and OCR providers. The codebase predates that model, so provider separation is ongoing and should be incremental rather than a cosmetic rewrite.
-
-The mobile build no longer hardcodes the maintainer's Vercel API endpoint. Remaining hosted assumptions should be treated as optional integrations and documented at each data boundary.
+The release candidate still needs a code-level review for remaining hosted assumptions and proof that a useful local/core reading path works without maintainer cloud credentials.
 
 ## Developer experience
 
-The current private application was designed around real hosted infrastructure, so the clean-install path is not yet considered independently verified. The public candidate must demonstrate a useful core experience without access to the maintainer's database, bucket or AI credentials.
+**Finding: documentation ready for verification.**
+
+Contributor quickstart, configuration, dependency policy, testing strategy and documentation index now exist. The unresolved question is empirical: a fresh environment must follow the instructions successfully. Documentation should not be marked verified until that happens.
+
+## Security
+
+**Finding: meaningful existing hardening, with one historical blocker.**
+
+The existing application has regression checks for SSRF/address handling and storage/object authorization. A prior private security pass reports hardening authenticated fetching, object-key ownership, progress ownership, CORS, rate limiting, upload limits and malformed request handling.
+
+The historical R2 credential exposure is release-blocking regardless of later source cleanup. Credential rotation and clean public history are mandatory. The exact clean candidate also needs a dedicated full-history secret scan and the security checklist completed.
 
 ## Testing and automation
 
-Security regression tests exist. CI now specifies deterministic dependency installation, TypeScript checking, security tests, production build and a high-severity production dependency audit. The workflow still needs to pass on the exact release-prep head before this section can be marked complete.
+**Finding: credible baseline, not yet complete release evidence.**
+
+CI defines deterministic npm installation, TypeScript checking, security regression tests, a production build and Python syntax validation. Production dependency advisories are surfaced separately. Dependabot and a lightweight tracked-source credential/signing-file check are configured.
+
+Broader representative document-flow tests and candidate CI results remain outstanding.
 
 ## Documentation and community
 
-README, architecture, contribution, security, roadmap, conduct, privacy boundary, release process, changelog, issue forms and pull request guidance are present in release preparation. Documentation should be tested by following it from a clean environment before release.
+**Finding: strong first-release foundation.**
+
+The repository now includes README, architecture, roadmap, contributing, security, conduct, governance, maintainers, support, privacy, configuration, testing, accessibility, dependency, release and audit guidance, plus structured issue forms, pull request guidance and CODEOWNERS.
+
+This is sufficient community structure for an early maintainer-led project without inventing bureaucracy for a community that does not yet exist.
 
 ## Licensing
 
-Application licensing remains deliberately unresolved until the exact Kokoro model/weights, kokoro-js, fonts, icons, sample assets and other redistributed material are audited. Do not add a permissive application LICENSE merely because the JavaScript dependencies are individually permissive.
+**Finding: unresolved and correctly blocking.**
 
-## Copyright and fixtures
+Voca has not prematurely added an application license. The exact Kokoro runtime/model weights and redistributed fonts, icons, Android artwork, fixtures and assets must be verified first. A similarly named upstream project is not sufficient evidence for the exact artifact shipped by Voca.
 
-The release candidate must contain no copyrighted books or private user documents. Tests and examples should use original, licensed, synthetic or public-domain material.
+## Presentation
+
+**Finding: narrative ready; visual/public metadata verification pending.**
+
+The README now explains problem, promise, architecture, capabilities, setup and release status coherently. Public screenshots, demo material, social preview, topics and logged-out repository review remain candidate-stage tasks and must use safe content.
+
+## Release engineering
+
+**Finding: safe process defined.**
+
+The public repository is specified as a release artifact produced from an audited snapshot and new Git history. The private development repository is not the publication target. An exact release-candidate template and final maintainer approval gate exist.
 
 ## Release verdict
 
 **NOT YET A PUBLIC RELEASE CANDIDATE.**
 
-This is a release-preparation finding, not a quality judgment on the product. The blocking conditions are concrete: clean public history, credential rotation confirmation, licensing verification, clean-install/local-core verification, passing CI on the candidate and final secret scan.
+Remaining release blockers are concrete rather than open-ended:
 
-Once those conditions pass, the candidate can move to maintainer approval.
+1. rotate/revoke historically exposed R2 credentials;
+2. create an audited clean-history public candidate;
+3. verify exact model/runtime/asset licenses and select the application license;
+4. prove clean setup and useful local/core reading without maintainer cloud credentials;
+5. pass candidate CI, full-history secret scan and manual security/format verification;
+6. complete presentation review on the clean repository;
+7. perform the final independent candidate audit;
+8. obtain explicit approval from Taiwo David Dayomola for that exact commit.
+
+No publication should occur before those conditions are satisfied.
