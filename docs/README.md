@@ -8,6 +8,7 @@
 - [Testing strategy](TESTING.md)
 - [Privacy boundaries](PRIVACY_BOUNDARIES.md)
 - [Engineering quality bar](QUALITY_BAR.md)
+- [Dependency policy](DEPENDENCY_POLICY.md)
 
 ## Project and community
 
