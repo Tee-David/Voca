@@ -10,7 +10,7 @@
     "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
-    "mobile:build": "cross-env MOBILE_BUILD=1 NEXT_PUBLIC_API_BASE_URL=https://voca-cyan.vercel.app SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build",
+    "mobile:build": "cross-env MOBILE_BUILD=1 SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build",
     "mobile:sync": "npm run mobile:build && cap sync android",
     "mobile:open": "cap open android",
     "mobile:apk": "npm run mobile:sync && cd android && ./gradlew assembleRelease",
