@@ -34,6 +34,7 @@
 - [Maintainer actions before RC](MAINTAINER_ACTIONS.md)
 - [Release process](RELEASE_PROCESS.md)
 - [Public release plan](PUBLIC_RELEASE_PLAN.md)
+- [Clean snapshot checklist](CLEAN_SNAPSHOT_CHECKLIST.md)
 - [Public presentation checklist](PRESENTATION_CHECKLIST.md)
 - [README release review](RELEASE_README_REVIEW.md)
 - [Open-source audit](OPEN_SOURCE_AUDIT.md)
