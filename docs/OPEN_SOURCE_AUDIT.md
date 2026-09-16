@@ -68,16 +68,16 @@ The README and draft release notes explain problem, promise, architecture, capab
 
 **Finding: safe process defined.**
 
-The public repository is specified as a release artifact produced from an audited snapshot and new Git history. The private development repository is not the publication target. An exact release-candidate template and final maintainer approval handoff exist.
+The public repository is specified as a release artifact produced from an audited snapshot and new Git history. The private development repository is not the publication target. Clean-snapshot, release-candidate and final maintainer handoff checklists exist.
 
 ## Release verdict
 
-**NOT YET A PUBLIC RELEASE CANDIDATE.**
+**FOUNDATION PASS COMPLETE. NOT YET A PUBLIC RELEASE CANDIDATE.**
 
-Remaining release blockers are concrete rather than open-ended:
+The repository-only open-source foundation is now substantially complete. Remaining release blockers require evidence that cannot be honestly created by adding more policy files:
 
 1. rotate/revoke historically exposed R2 credentials;
-2. create an audited clean-history public candidate;
+2. create and inspect the clean-history candidate;
 3. verify exact model/runtime/asset licenses and select the application license;
 4. prove clean setup and useful local/core reading without maintainer cloud credentials;
 5. pass candidate CI, full-history secret scan and manual security/format verification;
