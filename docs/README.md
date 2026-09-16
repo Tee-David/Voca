@@ -5,6 +5,7 @@
 - [Architecture](../ARCHITECTURE.md)
 - [Local-first principles](LOCAL_FIRST_PRINCIPLES.md)
 - [Data flow](DATA_FLOW.md)
+- [Provider guide](PROVIDER_GUIDE.md)
 - [Contributor quickstart](CONTRIBUTOR_QUICKSTART.md)
 - [Configuration](CONFIGURATION.md)
 - [Testing strategy](TESTING.md)
