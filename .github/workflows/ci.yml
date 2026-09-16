@@ -64,3 +64,18 @@ jobs:
 
       - name: Audit lockfile
         run: npm audit --omit=dev --audit-level=high
+
+  backend:
+    name: Backend syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile Python source
+        run: python -m compileall -q backend
