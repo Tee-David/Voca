@@ -24,3 +24,7 @@ The foundation pass does not claim that credentials were rotated, third-party li
 ## Next state
 
 The next meaningful artifact is the **clean public release candidate**. It should not be created by publishing the current private Git history. See `PUBLIC_RELEASE_PLAN.md`, `CLEAN_SNAPSHOT_CHECKLIST.md` and `RELEASE_CANDIDATE_TEMPLATE.md`.
+
+## External prerequisite
+
+The one confirmed external security action that cannot be replaced by repository work is rotation/revocation of the R2 credential historically exposed in private Git history. Candidate publication remains blocked until that is confirmed.
