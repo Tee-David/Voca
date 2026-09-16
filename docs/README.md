@@ -38,5 +38,6 @@
 - [Third-party licensing audit](THIRD_PARTY_AUDIT.md)
 - [Release candidate template](RELEASE_CANDIDATE_TEMPLATE.md)
 - [Draft release notes](RELEASE_NOTES_DRAFT.md)
+- [Final maintainer handoff](FINAL_HANDOFF.md)
 
 The documentation intentionally distinguishes completed evidence from planned work. A release checklist item should not be marked complete merely because a document says it ought to happen.
