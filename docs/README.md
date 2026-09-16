@@ -2,6 +2,7 @@
 
 ## Start here
 
+- [Current open-source status](STATUS.md)
 - [Architecture](../ARCHITECTURE.md)
 - [Local-first principles](LOCAL_FIRST_PRINCIPLES.md)
 - [Data flow](DATA_FLOW.md)
