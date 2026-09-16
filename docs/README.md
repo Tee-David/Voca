@@ -3,6 +3,7 @@
 ## Start here
 
 - [Architecture](../ARCHITECTURE.md)
+- [Data flow](DATA_FLOW.md)
 - [Contributor quickstart](CONTRIBUTOR_QUICKSTART.md)
 - [Configuration](CONFIGURATION.md)
 - [Testing strategy](TESTING.md)
