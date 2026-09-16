@@ -7,6 +7,7 @@
 - [Configuration](CONFIGURATION.md)
 - [Testing strategy](TESTING.md)
 - [Privacy boundaries](PRIVACY_BOUNDARIES.md)
+- [Accessibility](ACCESSIBILITY.md)
 - [Engineering quality bar](QUALITY_BAR.md)
 - [Dependency policy](DEPENDENCY_POLICY.md)
 
