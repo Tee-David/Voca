@@ -13,7 +13,7 @@ This scorecard tracks readiness, not product popularity. A section marked comple
 | Documentation | Complete foundation | Public-facing and contributor/release documentation set established and indexed |
 | Community readiness | Complete foundation | Conduct, governance, maintainers, support, issue forms, PR template and CODEOWNERS established |
 | Automation | Strong, verification pending | CI, dependency audit, Dependabot and tracked-source checks defined; exact candidate must pass |
-| Polished presentation | In progress | Repository narrative and presentation checklist exist; safe visuals and public metadata remain candidate-stage work |
+| Polished presentation | Strong narrative, visuals pending | Landing page/release narrative and presentation checklist exist; safe visuals and public metadata remain candidate-stage work |
 | Independent audit | First pass complete | `docs/OPEN_SOURCE_AUDIT.md`; final clean-candidate audit still required |
 | Release candidate | Blocked | Requires clean history, licensing, credential rotation and verification |
 | Maintainer approval | Waiting | Requested only after audited RC exists |
