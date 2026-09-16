@@ -30,3 +30,5 @@ The next meaningful artifact is the **clean public release candidate**. It shoul
 The one confirmed external security action that cannot be replaced by repository work is rotation/revocation of the R2 credential historically exposed in private Git history. Candidate publication remains blocked until that is confirmed.
 
 For the concise current state, see `STATUS.md`.
+
+The foundation phase is intentionally closed here. Future work should produce candidate evidence or code improvements that close a real release blocker, rather than adding documentation for its own sake.
