@@ -4,16 +4,16 @@
 
 ## Read anything. Listen anywhere.
 
-Voca is an open-source, local-first reader built for people who want to listen to and read documents they already own without making a subscription or proprietary cloud TTS service the center of the experience.
+Voca is a local-first reader for people who want to listen to and read documents they already own without making another subscription or proprietary cloud TTS service the center of the experience.
 
-The reader combines document extraction, local neural speech, synchronized word highlighting, sentence focus, continuous playback, offline caching, progress, annotations and optional document intelligence in one reading experience.
+The project began with a practical frustration: a document can already be yours and still be unnecessarily difficult or expensive to listen to. Voca combines document extraction, local neural speech, synchronized text, offline-oriented reading state and optional intelligence in one reading experience.
 
 ## Initial capabilities
 
 - PDF, EPUB, DOCX and TXT ingestion
 - Local Kokoro text-to-speech
 - Synchronized word highlighting and sentence focus
-- Continuous reading and auto-scroll
+- Continuous reading and automatic scrolling
 - Bookmarks, highlights and annotations
 - Offline-oriented PWA behavior
 - Android packaging through Capacitor
@@ -22,16 +22,24 @@ The reader combines document extraction, local neural speech, synchronized word 
 - Reading progress and statistics
 - Optional summaries, recaps, quizzes, questions and speech input
 
-## Open-source architecture
+## Local-first architecture
 
-Voca's core direction is local-first. Cloud storage, AI, sync, transcription, remote TTS and remote OCR are optional provider capabilities rather than the definition of the reader.
+The core direction is intentionally independent from any one cloud vendor. Hosted storage, AI, sync, transcription, remote TTS and remote OCR are optional provider capabilities. Voca documents when those capabilities create a remote data boundary.
 
-The first public release also establishes security, contribution, privacy-boundary, architecture, roadmap and release-process documentation so contributors can understand not only how the code works, but what the project is trying to protect.
+## Built to be contributed to
 
-## Security note
+The first open-source release establishes architecture and data-flow documentation, a contributor quickstart, testing and dependency policies, security and privacy guidance, accessibility/performance principles, structured issue and pull-request workflows, CI, dependency automation and an explicit release gate.
 
-The private development repository is not intended to be published directly. The public release must be produced from an audited clean history after credentials historically exposed in private development have been rotated.
+## Security posture
+
+Voca treats imported documents and client-supplied URLs/identifiers as untrusted. Existing regression coverage includes SSRF/address handling and storage authorization rules, and the project has dedicated release-candidate security review guidance.
+
+The original private development history is not part of the public release because credentials were historically committed there. Publication requires rotated credentials and a clean audited Git history.
+
+## Licensing
+
+Application licensing and any model-specific notices will be finalized against the exact release artifacts before publication. Model weights and bundled assets may have terms distinct from Voca's application source.
 
 ## Maintainer
 
-Created and maintained by Taiwo David Dayomola, Senior Software Engineer.
+Created and maintained by **Taiwo David Dayomola, Senior Software Engineer**.
