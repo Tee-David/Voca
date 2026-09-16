@@ -7,6 +7,7 @@
 - [Configuration](CONFIGURATION.md)
 - [Testing strategy](TESTING.md)
 - [Privacy boundaries](PRIVACY_BOUNDARIES.md)
+- [Engineering quality bar](QUALITY_BAR.md)
 
 ## Project and community
 
