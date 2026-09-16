@@ -27,6 +27,7 @@
 
 ## Security and release engineering
 
+- [Foundation pass summary](FOUNDATION_COMPLETE.md)
 - [Security policy](../SECURITY.md)
 - [Security review checklist](SECURITY_CHECKLIST.md)
 - [Release readiness gate](../RELEASE_READINESS.md)
