@@ -6,25 +6,22 @@ The project is preparing its first open-source release. Private-development hist
 
 ## Unreleased
 
-### Added
+### Open-source foundation
 
-- Open-source release-readiness gate
-- Security policy
-- Contribution guide
-- Architecture documentation
-- Public roadmap
-- Community code of conduct
-
-### Changed
-
-- Repositioned project documentation around Voca's local-first reading architecture
-- Removed the maintainer-hosted API URL from the Android/mobile build script
+- Repositioned Voca as a local-first reading and listening platform
+- Documented core architecture, data flows, provider boundaries and architectural decisions
+- Added security, privacy, contribution, conduct, governance, support and maintainer guidance
+- Added testing, accessibility, performance, compatibility, dependency and quality policies
+- Added structured issue forms, pull request guidance and CODEOWNERS
+- Added CI, dependency audit reporting, Dependabot and tracked-source credential/signing checks
+- Added release-readiness, clean-snapshot, licensing, security, presentation, audit and release-candidate gates
+- Removed the maintainer-hosted API URL from the mobile build script
 
 ### Security
 
 - Public release is blocked on clean-history verification and rotation of credentials previously exposed in private Git history
-- Existing security regression coverage includes SSRF and storage/object authorization checks
+- Existing security regression coverage includes SSRF/address and storage/object authorization checks
 
 ## Versioning
 
-Voca will adopt semantic versioning for public releases once the public API and extension surfaces are defined.
+Voca will adopt semantic versioning for public releases once the public API and extension/provider surfaces are defined.
