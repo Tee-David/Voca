@@ -1,26 +1,25 @@
 # Contributing to Voca
 
-Thank you for considering contributing to Voca.
+Thanks for helping improve Voca. The project is building a local-first reading and listening platform, so contributions are evaluated not only for whether they work, but for how they affect privacy, offline capability, security, accessibility and provider independence.
 
-Voca is an open-source, local-first document reader focused on turning user-provided documents into a synchronized reading and listening experience. The project values privacy, offline capability, accessible reading, provider independence and a contributor experience that does not require access to the maintainer's private infrastructure.
+## Before you start
 
-## Before contributing
+Read the README, `ARCHITECTURE.md`, `docs/LOCAL_FIRST_PRINCIPLES.md` and `docs/QUALITY_BAR.md`. For setup, use `docs/CONTRIBUTOR_QUICKSTART.md`.
 
-Voca is currently being prepared for its first public release. Architecture and setup instructions may change while the release-readiness work is completed.
+For a large architecture, provider, authentication, persistence or privacy change, open a design discussion before investing in a large implementation.
 
-Do not commit credentials, private documents, production URLs, signing material, database dumps or environment-specific infrastructure identifiers. Examples and tests should use original, licensed or public-domain content.
+## Principles
 
-## Development principles
+- Keep local-capable reading workflows local where practical.
+- Treat hosted storage, AI, sync, transcription, OCR and remote TTS as explicit provider boundaries.
+- Never commit secrets, private user documents, production identifiers or signing material.
+- Use synthetic, original, licensed or public-domain test documents.
+- Prefer focused changes with regression evidence over broad rewrites.
+- Preserve accessibility and offline behavior when changing the reader.
 
-Prefer local processing when technically reasonable. Keep optional hosted services behind explicit boundaries. A feature that uses an external provider should degrade clearly when that provider is not configured rather than making the core reader unusable.
+## Development
 
-Security-sensitive changes should include tests. Document parsing and rendering code must treat imported content as untrusted input.
-
-## Development setup
-
-The current application lives primarily under `frontend/`, with an optional fallback service under `backend/`. Until the local-only setup is finalized, consult `.env.example` and the repository README for the current development requirements.
-
-Typical frontend development currently begins with:
+The primary application lives in `frontend/`.
 
 ```bash
 cd frontend
@@ -28,26 +27,36 @@ npm ci
 npm run dev
 ```
 
-Run the available security checks with:
+Before submitting a frontend change, run the checks relevant to it:
 
 ```bash
+npx tsc --noEmit
 npm run test:security
+npm run build
 ```
 
-Additional lint, typecheck, unit, integration and end-to-end commands will be documented as the public CI pipeline is completed.
+See `docs/TESTING.md` for the testing strategy and `docs/DEPENDENCY_POLICY.md` before introducing a substantial dependency, model or asset.
 
 ## Pull requests
 
-Keep changes focused and explain why the change is needed, how it was tested, whether it changes local/cloud behavior and whether it introduces or changes a third-party dependency.
+A good pull request explains the problem, the change, verification and any privacy/provider implications. Keep unrelated refactors separate where possible. UI changes should include safe visual evidence when it helps review.
 
-For new provider integrations, keep provider-specific code outside core reader behavior and document any data that is transmitted externally.
+Security-sensitive behavior should include a regression test where practical.
 
-For new document formats, include validation and representative copyright-safe fixtures.
+## Security reports
+
+Do not open a public issue for an undisclosed vulnerability. Follow `SECURITY.md`.
 
 ## AI-assisted contributions
 
-AI-assisted development is welcome, but contributors remain responsible for the code they submit. Review generated code, verify licensing and provenance, run the relevant tests and do not submit secrets or proprietary material to external tools without authorization.
+AI-assisted code is welcome when the contributor understands and takes responsibility for the submitted change. Review generated code, remove invented assumptions, run the relevant checks and disclose important generated dependencies or copied material just as you would for manually written code.
 
-## Licensing
+## Copyright and licensing
 
-Do not add third-party code, models, fonts, icons or assets unless their license is compatible with Voca and can be documented. Model licensing is treated separately from the application source license where necessary.
+Do not contribute copyrighted books, DRM-circumvention code, private documents or material you do not have the right to redistribute. Contributors must have the right to submit their code and assets.
+
+The first public application license is being selected after the exact third-party/model asset audit. Accepted public contributions will be made under the project's published source license once that release license is established.
+
+## Conduct
+
+Participation in Voca-managed spaces is governed by `CODE_OF_CONDUCT.md`.
