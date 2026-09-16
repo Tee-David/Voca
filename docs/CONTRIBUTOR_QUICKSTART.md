@@ -53,6 +53,10 @@ Never commit a private book or user document as a fixture. Create a minimal synt
 
 Authentication, URL fetching, file parsing, storage keys, upload handling, OCR execution and mobile configuration deserve focused security review. Update or add regression tests when changing these surfaces.
 
+## Dependencies
+
+Read `docs/DEPENDENCY_POLICY.md` before introducing a substantial package, model or redistributed asset. Model and asset licensing is part of the release boundary, not only a package-manager concern.
+
 ## Before you submit
 
 Explain the problem, the change, how you verified it and any privacy or remote-provider implications. A reviewer should be able to understand why the change belongs in Voca without reverse-engineering your intent from the diff.
