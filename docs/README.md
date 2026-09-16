@@ -24,6 +24,7 @@
 - [Release readiness gate](../RELEASE_READINESS.md)
 - [Release blockers](RELEASE_BLOCKERS.md)
 - [Release process](RELEASE_PROCESS.md)
+- [Public release plan](PUBLIC_RELEASE_PLAN.md)
 - [Open-source audit](OPEN_SOURCE_AUDIT.md)
 - [Open-source scorecard](OPEN_SOURCE_SCORECARD.md)
 - [Third-party licensing audit](THIRD_PARTY_AUDIT.md)
