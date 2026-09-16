@@ -21,24 +21,19 @@ jobs:
         working-directory: frontend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Type check
         run: npx tsc --noEmit
-
       - name: Security regression tests
         run: npm run test:security
-
       - name: Production build
         run: npm run build
         env:
@@ -53,34 +48,56 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - run: npm audit --omit=dev --audit-level=high
 
-      - name: Audit lockfile and report findings
-        run: npm audit --omit=dev --audit-level=high
+  dependency-refresh-candidate:
+    name: Dependency refresh candidate
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Upgrade release-blocking dependencies
+        run: |
+          npm install --save-exact next@16.3.5 next-auth@5.0.0-beta.32 @auth/prisma-adapter@2.11.3 pdfjs-dist@6.3.289
+          npm audit fix
+      - run: npx tsc --noEmit
+      - run: npm run test:security
+      - name: Build refreshed graph
+        run: npm run build
+        env:
+          NEXTAUTH_SECRET: ci-only-placeholder-not-a-production-secret
+          NEXTAUTH_URL: http://localhost:3000
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Upload refreshed manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-refresh
+          path: |
+            frontend/package.json
+            frontend/package-lock.json
+          retention-days: 1
 
   backend:
     name: Backend syntax
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
-      - name: Compile Python source
-        run: python -m compileall -q backend
-
-# Dependency findings remain release-gating evidence in RELEASE_READINESS.md,
-# but they are initially advisory in PR CI so an upstream advisory cannot make
-# all unrelated contributions impossible to test or merge.
+      - run: python -m compileall -q backend
