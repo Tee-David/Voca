@@ -1,9 +1,10 @@
 /**
  * Platform-aware fetch wrapper for Voca.
  *
- * On web: NEXT_PUBLIC_API_BASE_URL is empty → requests stay same-origin (cookies work).
- * On mobile (Capacitor): NEXT_PUBLIC_API_BASE_URL = https://voca.vercel.app → cross-origin.
- *   Cookies won't cross; a JWT bearer token (set via setAuthToken) is attached instead.
+ * Web builds use same-origin requests by default so browser session cookies work.
+ * Capacitor builds can set NEXT_PUBLIC_API_BASE_URL to a self-hosted or managed
+ * Voca API endpoint. Cross-origin mobile requests use the bearer token managed
+ * by the native authentication flow instead of browser cookies.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
@@ -37,8 +38,8 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 }
 
 /**
- * Build pdfjs getDocument() options that include the Bearer token on mobile
- * (cross-origin — where proxy routes reject unauthenticated requests).
+ * Build pdfjs getDocument() options that include the bearer token for an
+ * authenticated cross-origin mobile API endpoint.
  */
 export function pdfDocumentOptions(url: string): { url: string; httpHeaders?: Record<string, string>; withCredentials?: boolean } {
   if (!API_BASE || !authToken) return { url };
