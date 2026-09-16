@@ -18,7 +18,7 @@ The project leads with a real user problem: listening to owned documents should 
 
 **Finding: direction is clear; implementation separation remains in progress.**
 
-The core reading pipeline and target provider capabilities are documented. Hosted storage, AI, sync, transcription, remote TTS and OCR are explicitly treated as adapters. The decision not to force a monorepo rewrite is appropriate for a working application.
+The core reading pipeline, data flows, architectural decisions and target provider capabilities are documented. Hosted storage, AI, sync, transcription, remote TTS and OCR are explicitly treated as adapters. The decision not to force a monorepo rewrite is appropriate for a working application.
 
 The release candidate still needs a code-level review for remaining hosted assumptions and proof that a useful local/core reading path works without maintainer cloud credentials.
 
@@ -26,7 +26,7 @@ The release candidate still needs a code-level review for remaining hosted assum
 
 **Finding: documentation ready for verification.**
 
-Contributor quickstart, configuration, dependency policy, testing strategy and documentation index now exist. The unresolved question is empirical: a fresh environment must follow the instructions successfully. Documentation should not be marked verified until that happens.
+Contributor quickstart, configuration, compatibility, dependency policy, testing strategy and documentation index now exist. The unresolved question is empirical: a fresh environment must follow the instructions successfully. Documentation should not be marked verified until that happens.
 
 ## Security
 
@@ -48,7 +48,7 @@ Broader representative document-flow tests and candidate CI results remain outst
 
 **Finding: strong first-release foundation.**
 
-The repository now includes README, architecture, roadmap, contributing, security, conduct, governance, maintainers, support, privacy, configuration, testing, accessibility, dependency, release and audit guidance, plus structured issue forms, pull request guidance and CODEOWNERS.
+The repository now includes README, architecture, roadmap, contributing, security, conduct, governance, maintainers, support, privacy, configuration, testing, accessibility, performance, compatibility, dependency, release and audit guidance, plus structured issue forms, pull request guidance and CODEOWNERS.
 
 This is sufficient community structure for an early maintainer-led project without inventing bureaucracy for a community that does not yet exist.
 
@@ -62,13 +62,13 @@ Voca has not prematurely added an application license. The exact Kokoro runtime/
 
 **Finding: narrative ready; visual/public metadata verification pending.**
 
-The README now explains problem, promise, architecture, capabilities, setup and release status coherently. Public screenshots, demo material, social preview, topics and logged-out repository review remain candidate-stage tasks and must use safe content.
+The README and draft release notes explain problem, promise, architecture, capabilities, setup and release status coherently. A rendered README review and presentation checklist exist. Public screenshots, demo material, social preview, topics and logged-out repository review remain candidate-stage tasks and must use safe content.
 
 ## Release engineering
 
 **Finding: safe process defined.**
 
-The public repository is specified as a release artifact produced from an audited snapshot and new Git history. The private development repository is not the publication target. An exact release-candidate template and final maintainer approval gate exist.
+The public repository is specified as a release artifact produced from an audited snapshot and new Git history. The private development repository is not the publication target. An exact release-candidate template and final maintainer approval handoff exist.
 
 ## Release verdict
 
