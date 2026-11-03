@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible problem in Voca
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Voca. Do not include private documents, credentials or undisclosed vulnerability details. Security issues belong in the private process described in SECURITY.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Give the smallest safe set of steps or sample input that reproduces the problem.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it happen?
+      options:
+        - Web browser
+        - Installed PWA
+        - Android
+        - Optional backend
+        - Development tooling
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Voca version or commit
+  - type: input
+    id: environment
+    attributes:
+      label: Browser, OS and device
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Remove tokens, credentials, document content and personal information before posting.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, private document content and personal information.
+          required: true
+        - label: This is not an undisclosed security vulnerability.
+          required: true

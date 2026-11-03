@@ -1,0 +1,51 @@
+# Voca Documentation
+
+## Start here
+
+- [Current open-source status](STATUS.md)
+- [Architecture](../ARCHITECTURE.md)
+- [Local-first principles](LOCAL_FIRST_PRINCIPLES.md)
+- [Data flow](DATA_FLOW.md)
+- [Provider guide](PROVIDER_GUIDE.md)
+- [Contributor quickstart](CONTRIBUTOR_QUICKSTART.md)
+- [Configuration](CONFIGURATION.md)
+- [Testing strategy](TESTING.md)
+- [Privacy boundaries](PRIVACY_BOUNDARIES.md)
+- [Accessibility](ACCESSIBILITY.md)
+- [Performance](PERFORMANCE.md)
+- [Compatibility](COMPATIBILITY.md)
+- [Engineering quality bar](QUALITY_BAR.md)
+- [Dependency policy](DEPENDENCY_POLICY.md)
+
+## Project and community
+
+- [Brand and project identity](BRANDING.md)
+- [Roadmap](../ROADMAP.md)
+- [Project governance](PROJECT_GOVERNANCE.md)
+- [Maintainers](MAINTAINERS.md)
+- [Support](SUPPORT.md)
+- [Architecture decisions](ARCHITECTURE_DECISIONS.md)
+
+## Security and release engineering
+
+- [Foundation pass summary](FOUNDATION_COMPLETE.md)
+- [Security policy](../SECURITY.md)
+- [Security review checklist](SECURITY_CHECKLIST.md)
+- [Release readiness gate](../RELEASE_READINESS.md)
+- [Release blockers](RELEASE_BLOCKERS.md)
+- [Maintainer actions before RC](MAINTAINER_ACTIONS.md)
+- [Candidate entry criteria](CANDIDATE_ENTRY_CRITERIA.md)
+- [Release process](RELEASE_PROCESS.md)
+- [Public release plan](PUBLIC_RELEASE_PLAN.md)
+- [Clean snapshot checklist](CLEAN_SNAPSHOT_CHECKLIST.md)
+- [Public presentation checklist](PRESENTATION_CHECKLIST.md)
+- [README release review](RELEASE_README_REVIEW.md)
+- [Open-source audit](OPEN_SOURCE_AUDIT.md)
+- [Audit log](AUDIT_LOG.md)
+- [Open-source scorecard](OPEN_SOURCE_SCORECARD.md)
+- [Third-party licensing audit](THIRD_PARTY_AUDIT.md)
+- [Release candidate template](RELEASE_CANDIDATE_TEMPLATE.md)
+- [Draft release notes](RELEASE_NOTES_DRAFT.md)
+- [Final maintainer handoff](FINAL_HANDOFF.md)
+
+The documentation intentionally distinguishes completed evidence from planned work. A release checklist item should not be marked complete merely because a document says it ought to happen.

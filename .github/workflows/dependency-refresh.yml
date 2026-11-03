@@ -1,0 +1,48 @@
+name: Dependency refresh candidate
+
+on:
+  push:
+    branches: [opensource/release-prep]
+    paths:
+      - '.github/workflows/dependency-refresh.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Upgrade release-blocking dependencies
+        run: |
+          npm install --save-exact next@16.3.5 next-auth@5.0.0-beta.32 @auth/prisma-adapter@2.11.3 pdfjs-dist@6.3.289
+          npm audit fix
+      - name: Verify type safety
+        run: npx tsc --noEmit
+      - name: Verify security regressions
+        run: npm run test:security
+      - name: Verify production build
+        run: npm run build
+        env:
+          NEXTAUTH_SECRET: ci-only-placeholder-not-a-production-secret
+          NEXTAUTH_URL: http://localhost:3000
+      - name: Audit production dependency graph
+        run: npm audit --omit=dev --audit-level=high
+      - name: Upload refreshed manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-refresh
+          path: |
+            frontend/package.json
+            frontend/package-lock.json
+          retention-days: 1

@@ -1,0 +1,10 @@
+# Default maintainer review for the initial open-source phase.
+* @Tee-David
+
+# Security, release and automation changes always receive maintainer review.
+/SECURITY.md @Tee-David
+/RELEASE_READINESS.md @Tee-David
+/.github/workflows/ @Tee-David
+/docs/SECURITY_CHECKLIST.md @Tee-David
+/docs/RELEASE_PROCESS.md @Tee-David
+/docs/PUBLIC_RELEASE_PLAN.md @Tee-David

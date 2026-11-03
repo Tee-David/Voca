@@ -17,8 +17,9 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Voca — Read Anything, Listen Everywhere",
-  description: "AI-powered PDF reader with natural text-to-speech. Listen to any document, hands-free.",
+  title: "Voca — Read anything. Listen anywhere.",
+  description:
+    "An open-source, local-first reader that turns your documents into a synchronized listening experience.",
   manifest: "/manifest.json",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Voca" },
 };
@@ -27,8 +28,6 @@ export const viewport: Viewport = {
   themeColor: "#4338CA",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
