@@ -102,10 +102,11 @@ For a live-reload loop on a phone, use `scripts/dev.sh`. JavaScript-only updates
 
 ## Deploy
 
-1. Push to [github.com/Tee-David/Voca](https://github.com/Tee-David/Voca)
-2. Import on [vercel.com](https://vercel.com/new): set **Root Directory** to `frontend`
-3. Add all env vars in Vercel → Project → Settings → Environment Variables
-4. First deploy runs `prisma generate && next build` automatically
+A push to `main` runs `.github/workflows/vercel-deploy.yml`. It deploys the `frontend` folder to Vercel production
+through the Vercel API, waits for the deployment, and retries when the deployment quota is reached.
+
+One-time set-up in Vercel: import the repo with **Root Directory** `frontend`, and add every environment variable from
+the table above under Project > Settings > Environment Variables. The build runs `prisma generate && next build`.
 
 ## License
 
