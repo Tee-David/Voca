@@ -1,56 +1,38 @@
-# Voca scripts — click-to-run dev helpers
+# Voca scripts
 
-All three scripts live in this folder. They work from your regular terminal **and** by double-clicking in a file manager that offers "Run in terminal" on `.sh` files (GNOME Files, Dolphin, Nautilus, Thunar — right-click → Properties → Permissions → "Allow executing file as program" is already set).
+Helpers for the Android app (Capacitor). They run from a terminal, or by a double-click in a Linux file manager that
+offers "Run in Terminal" for `.sh` files.
 
-| Script | What it does | When to use |
+| Script | What it does | When to use it |
 |---|---|---|
-| `dev.sh` | Starts `npm run dev` + `npx cap run android -l --external` together | Daily dev loop — every file save updates the phone in ~1s |
-| `apk-debug.sh` | Builds a debug APK and installs it on the connected phone | Quick one-shot rebuild (no live-reload needed) |
-| `ota.sh` | Pushes a new JS bundle via Capgo | When Capgo is set up and you just want to ship a JS change |
+| `dev.sh` | Starts `npm run dev` and `npx cap run android -l --external` together | The daily loop: each save updates the phone in about 1 second |
+| `apk-debug.sh` | Builds a debug APK and installs it on the connected phone | A quick one-time rebuild without live reload |
 
-## First-time prereqs
+## Before the first run
 
-Before any of these work, follow [../plans/android-setup.md](../plans/android-setup.md) Steps 1–6 to install JDK 21 + the Android SDK. And:
+1. Install JDK 21 and the Android SDK, and set `ANDROID_HOME`.
+2. Connect a phone with USB debugging on (or start an emulator).
+3. Install the app's packages:
 
-```bash
-cd ../frontend
-npm install
-```
+   ```bash
+   cd ../frontend
+   npm install
+   ```
 
 ## Environment
 
-All scripts default `NEXT_PUBLIC_API_BASE_URL=https://voca-cyan.vercel.app`. Override with:
+Both scripts set `NEXT_PUBLIC_API_BASE_URL=https://voca-cyan.vercel.app`, so the app on the phone talks to the deployed
+API. To use another deployment:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://your-other-vercel.vercel.app ./scripts/dev.sh
+NEXT_PUBLIC_API_BASE_URL=https://your-deployment.vercel.app ./scripts/dev.sh
 ```
 
-Capgo OTA needs a `CAPGO_TOKEN` (or `.env.local` with it) before `ota.sh` can upload — see [../plans/apk-walkthrough.md §7](../plans/apk-walkthrough.md).
-
-## Running
-
-From terminal:
+## Run
 
 ```bash
 ./scripts/dev.sh
 ./scripts/apk-debug.sh
-./scripts/ota.sh
 ```
 
-From file manager: double-click the `.sh`, choose **Run in Terminal** if prompted.
-
-## Creating desktop launchers (optional)
-
-If you want one-click from the GNOME/KDE app grid, drop these in `~/.local/share/applications/` (edit the `Exec=` path to match your checkout):
-
-```desktop
-[Desktop Entry]
-Type=Application
-Name=Voca — Dev loop
-Exec=gnome-terminal -- /home/teedavid/Desktop/Projects/Voca/scripts/dev.sh
-Icon=utilities-terminal
-Terminal=false
-Categories=Development;
-```
-
-Repeat with `apk-debug.sh` / `ota.sh` for the other two. They'll show up as searchable apps in your Activities overview.
+Over-the-air JavaScript updates use Capgo: `npm run mobile:release` in `frontend/` (needs a `CAPGO_TOKEN`).

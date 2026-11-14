@@ -2,21 +2,21 @@
 
 **Read anything. Listen anywhere.**
 
-An AI-powered document reader with on-device text-to-speech, Speechify-grade word highlighting, and offline-first architecture — installable as a PWA.
+A document reader that reads your files aloud with on-device text-to-speech and word-by-word highlighting. It works offline, installs as a PWA, and ships as an Android app.
 
-## ✨ Features
+## Features
 
-- 📚 **Smart Library** — upload PDF, EPUB, TXT, or DOCX with auto title cleanup, cover extraction, and favorites
-- 🔊 **Continuous Reading** — auto-advances through chapters with pre-generated audio for seamless playback
-- ✨ **Speechify-Style Highlighting** — word-by-word tracking with character-weighted timing, sentence focus dimming, and auto-scroll
-- 🧑‍🎤 **9 AI Voices** — Kokoro TTS running entirely in-browser via WebAssembly (zero API cost)
-- 🔖 **Bookmarks & Annotations** — color-tagged highlights, exportable as annotated PDFs via `pdf-lib`
-- 🧠 **AI Assistant** — summarize, recap, quiz, or chat about your book (Groq LLM + RAG)
-- 🎙️ **Voice Query** — ask questions hands-free via Whisper speech-to-text
-- 🎧 **Audiobook Export** — render any document to downloadable audio
-- 📱 **PWA** — installable, offline-capable, lock-screen controls via MediaSession API
-- 🌗 **Theming** — light, dark, and sepia modes across all panels and sheets
-- 📈 **Reading Stats** — streaks, listening time, and progress tracking
+- **Smart Library**: upload PDF, EPUB, TXT, or DOCX with auto title cleanup, cover extraction, and favorites
+- **Continuous Reading**: auto-advances through chapters with pre-generated audio for seamless playback
+- **Speechify-Style Highlighting**: word-by-word tracking with character-weighted timing, sentence focus dimming, and auto-scroll
+- **9 AI Voices**: Kokoro TTS running entirely in-browser via WebAssembly (zero API cost)
+- **Bookmarks & Annotations**: color-tagged highlights, exportable as annotated PDFs via `pdf-lib`
+- **AI Assistant**: summarize, recap, quiz, or chat about your book (Groq LLM + RAG)
+- **Voice Query**: ask questions hands-free via Whisper speech-to-text
+- **Audiobook Export**: render any document to downloadable audio
+- **PWA**: installable, offline-capable, lock-screen controls via MediaSession API
+- **Theming**: light, dark, and sepia modes across all panels and sheets
+- **Reading Stats**: streaks, listening time, and progress tracking
 
 ## Stack
 
@@ -30,6 +30,7 @@ An AI-powered document reader with on-device text-to-speech, Speechify-grade wor
 | Auth | NextAuth.js v5 (credentials + JWT) |
 | PDF | pdfjs-dist + Tesseract.js OCR + pdf-lib export |
 | PWA | @serwist/next |
+| Android | Capacitor (`com.voca.app`), Capgo for over-the-air updates |
 
 ## Repository Layout
 
@@ -44,8 +45,10 @@ Voca/
 │   │   └── workers/   TTS worker, AI worker
 │   ├── prisma/        schema.prisma + seed.ts
 │   └── public/        Static assets, manifest, preloader
-├── backend/           FastAPI + Kokoro TTS (Hugging Face Space)
-├── AGENTS.md          Rules for AI coding agents
+│   ├── android/       Capacitor Android project
+│   └── capacitor.config.ts
+├── backend/           FastAPI + Kokoro TTS (Hugging Face Space, fallback voice service)
+├── scripts/           Android dev helpers (see scripts/README.md)
 └── .env.example       Template for secrets
 ```
 
@@ -84,10 +87,23 @@ npm run dev   # http://localhost:3000
 
 See [.env.example](.env.example) for a working template. **Never commit `.env`.**
 
+## Android app
+
+The Android app wraps a static build of the frontend with Capacitor and talks to the deployed API.
+
+```bash
+cd frontend
+npm run mobile:sync        # static build + cap sync android
+npm run mobile:apk:debug   # debug APK (release: npm run mobile:apk)
+npm run mobile:open        # open in Android Studio
+```
+
+For a live-reload loop on a phone, use `scripts/dev.sh`. JavaScript-only updates can ship over the air with `npm run mobile:release` (Capgo).
+
 ## Deploy
 
 1. Push to [github.com/Tee-David/Voca](https://github.com/Tee-David/Voca)
-2. Import on [vercel.com](https://vercel.com/new) — set **Root Directory** to `frontend`
+2. Import on [vercel.com](https://vercel.com/new): set **Root Directory** to `frontend`
 3. Add all env vars in Vercel → Project → Settings → Environment Variables
 4. First deploy runs `prisma generate && next build` automatically
 
